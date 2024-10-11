@@ -214,102 +214,103 @@
                (fn from-realm [v]
                  (lens/shove nil lens v)))))
 
-(defn extended [realm recurse]
+(defn extended [realm]
   ;; Note: this does some checks on the transit values that are read,
   ;; but those checks only guarantee that no information is lost/silently dropped.
   ;; The translated values may still not be 'contained' in the target
   ;; realm, which has to be checked separately.
-  (cond
-    (realm-inspection/optional? realm)
-    (let [inner-t (recurse (realm-inspection/optional-realm-realm realm))]
-      (optional inner-t))
+  (fn [recurse] ;; TODO: move that down to where it is needed
+    (cond
+      (realm-inspection/optional? realm)
+      (let [inner-t (recurse (realm-inspection/optional-realm-realm realm))]
+        (optional inner-t))
 
-    (realm-inspection/delayed? realm)
-    ;; Note: for now we assume, that at the time this translation is fetched, the realm must be resolvable.
-    (recurse (deref (realm-inspection/delayed-realm-delay realm)))
+      (realm-inspection/delayed? realm)
+      ;; Note: for now we assume, that at the time this translation is fetched, the realm must be resolvable.
+      (recurse (deref (realm-inspection/delayed-realm-delay realm)))
 
-    (realm-inspection/named? realm)
-    (recurse (realm-inspection/named-realm-realm realm))
+      (realm-inspection/named? realm)
+      (recurse (realm-inspection/named-realm-realm realm))
 
-    (realm-inspection/union? realm)
-    ;; or flat-union? flat-union has a smaller representation, but will have less performance.
-    (tagged-union-lens (realm-inspection/union-realm-realms realm) recurse)
+      (realm-inspection/union? realm)
+      ;; or flat-union? flat-union has a smaller representation, but will have less performance.
+      (tagged-union-lens (realm-inspection/union-realm-realms realm) recurse)
 
-    ;; Note: because every value should conform to all intersected realms, every translation should be able to translate all values.
-    ;; So we can just take the first one. (can't be empty)
-    (realm-inspection/intersection? realm)
-    ;; We could also try them all and use the first that works?
-    (recurse (first (realm-inspection/intersection-realm-realms realm)))
+      ;; Note: because every value should conform to all intersected realms, every translation should be able to translate all values.
+      ;; So we can just take the first one. (can't be empty)
+      (realm-inspection/intersection? realm)
+      ;; We could also try them all and use the first that works?
+      (recurse (first (realm-inspection/intersection-realm-realms realm)))
 
-    ;; TODO: what about map-with-tag?
-    (realm-inspection/builtin-scalar? realm)
-    (case (realm-inspection/builtin-scalar-realm-id realm)
-      :number id ;; TODO: is this correct?
-      :keyword id
-      :symbol id
-      :string id
-      :boolean id
-      :uuid transit-uuid
-      ;; TODO: can we support :char ? :rational?
-      :any id ;; assuming the value is compatible with transit. (do runtime check?; offer support for transit-realm instead of any?)
-      (throw (format/unsupported-exn realm)))
+      ;; TODO: what about map-with-tag?
+      (realm-inspection/builtin-scalar? realm)
+      (case (realm-inspection/builtin-scalar-realm-id realm)
+        :number id ;; TODO: is this correct?
+        :keyword id
+        :symbol id
+        :string id
+        :boolean id
+        :uuid transit-uuid
+        ;; TODO: can we support :char ? :rational?
+        :any id ;; assuming the value is compatible with transit. (do runtime check?; offer support for transit-realm instead of any?)
+        (throw (format/unsupported-exn realm)))
 
-    ;; TODO: support transit-realm, edn-realm?
+      ;; TODO: support transit-realm, edn-realm?
 
-    (realm-inspection/integer-from-to? realm)
-    id
+      (realm-inspection/integer-from-to? realm)
+      id
 
-    (realm-inspection/real-range? realm)
-    id
+      (realm-inspection/real-range? realm)
+      id
 
-    (realm-inspection/sequence-of? realm)
-    (ensure-transit realm sequential?
-                    (lens/mapl (recurse (realm-inspection/sequence-of-realm-realm realm))))
+      (realm-inspection/sequence-of? realm)
+      (ensure-transit realm sequential?
+                      (lens/mapl (recurse (realm-inspection/sequence-of-realm-realm realm))))
 
-    (realm-inspection/set-of? realm)
-    (ensure-transit realm set?
-                    (set-as-seq (lens/mapl (recurse (realm-inspection/set-of-realm-realm realm)))))
+      (realm-inspection/set-of? realm)
+      (ensure-transit realm set?
+                      (set-as-seq (lens/mapl (recurse (realm-inspection/set-of-realm-realm realm)))))
 
-    (realm-inspection/map-with-keys? realm)
-    (ensure-map-has-no-other-keys
-     realm
-     (lens/pattern (->> (realm-inspection/map-with-keys-realm-map realm)
-                        (map (fn [[k value-realm]]
-                               (when-not (transit? k)
-                                 (throw (format/unsupported-exn k [realm])))
-                               [(lens/member k) (lens/>> (lens/member k) (recurse value-realm))]))
-                        (into {}))))
+      (realm-inspection/map-with-keys? realm)
+      (ensure-map-has-no-other-keys
+       realm
+       (lens/pattern (->> (realm-inspection/map-with-keys-realm-map realm)
+                          (map (fn [[k value-realm]]
+                                 (when-not (transit? k)
+                                   (throw (format/unsupported-exn k [realm])))
+                                 [(lens/member k) (lens/>> (lens/member k) (recurse value-realm))]))
+                          (into {}))))
 
-    (realm-inspection/map-of? realm)
-    (ensure-transit realm map?
-                    (map-lens (recurse (realm-inspection/map-of-realm-key-realm realm))
-                              (recurse (realm-inspection/map-of-realm-value-realm realm))))
-
-    (realm-inspection/tuple? realm)
-    (ensure-transit realm #(and (vector? %)
-                                (= (count %) (count (realm-inspection/tuple-realm-realms realm))))
-                    (vector-lens (doall (map recurse (realm-inspection/tuple-realm-realms realm)))))
-
-    (realm-inspection/map-with-tag? realm)
-    ;; Note: we can check that the speficic key and value are transit?, but we have to assume the rest of the map is too. Can't help with translation.
-    (let [k (realm-inspection/map-with-tag-realm-key realm)
-          tag (realm-inspection/map-with-tag-realm-value realm)]
-      (when-not (transit? k)
-        (throw (format/unsupported-exn {:key k})))
-      (when-not (transit? tag)
-        (throw (format/unsupported-exn {:value tag})))
+      (realm-inspection/map-of? realm)
       (ensure-transit realm map?
-                      lens/id))
+                      (map-lens (recurse (realm-inspection/map-of-realm-key-realm realm))
+                                (recurse (realm-inspection/map-of-realm-value-realm realm))))
 
-    (realm-inspection/record? realm)
-    (flat-record-lens realm recurse)
+      (realm-inspection/tuple? realm)
+      (ensure-transit realm #(and (vector? %)
+                                  (= (count %) (count (realm-inspection/tuple-realm-realms realm))))
+                      (vector-lens (doall (map recurse (realm-inspection/tuple-realm-realms realm)))))
 
-    (realm-inspection/enum? realm)
-    (let [values (realm-inspection/enum-realm-values realm)]
-      (doseq [v values]
-        (when-not (transit? v)
-          (throw (format/unsupported-exn v))))
-      lens/id)
+      (realm-inspection/map-with-tag? realm)
+      ;; Note: we can check that the speficic key and value are transit?, but we have to assume the rest of the map is too. Can't help with translation.
+      (let [k (realm-inspection/map-with-tag-realm-key realm)
+            tag (realm-inspection/map-with-tag-realm-value realm)]
+        (when-not (transit? k)
+          (throw (format/unsupported-exn {:key k})))
+        (when-not (transit? tag)
+          (throw (format/unsupported-exn {:value tag})))
+        (ensure-transit realm map?
+                        lens/id))
 
-    :else
-    (throw (format/unsupported-exn realm))))
+      (realm-inspection/record? realm)
+      (flat-record-lens realm recurse)
+
+      (realm-inspection/enum? realm)
+      (let [values (realm-inspection/enum-realm-values realm)]
+        (doseq [v values]
+          (when-not (transit? v)
+            (throw (format/unsupported-exn v))))
+        lens/id)
+
+      :else
+      (throw (format/unsupported-exn realm)))))
