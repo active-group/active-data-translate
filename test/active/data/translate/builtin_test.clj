@@ -3,7 +3,8 @@
             [active.data.translate.core :as core]
             [active.data.realm :as realm]
             [active.data.record :as r]
-            [clojure.test :as t]))
+            [clojure.test :as t]
+            [active.data.translate.format :as format]))
 
 ;; TODO: clojurescript. and interop between clj and cljs (via transit values)
 
@@ -26,7 +27,10 @@
     (t/is (= t (core/translate-from realm sut/transit v)))
 
     (t/is (vector? (core/translate-to realm sut/transit t)))
-    (t/is (= v (core/translate-to realm sut/transit t)))))
+    (t/is (= v (core/translate-to realm sut/transit t)))
+
+    (t/is (format/runtime-error? (try (core/translate-to realm sut/transit :foo)
+                                      (catch Exception e e))))))
 
 (r/def-record rec-ab
   [rec-a :- realm/string

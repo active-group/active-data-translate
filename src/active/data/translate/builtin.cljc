@@ -1,5 +1,5 @@
 (ns active.data.translate.builtin
-  (:require [active.data.translate.lang :as lang]
+  (:require [active.data.translate.format :as format]
             [active.data.translate.builtin.transit :as transit]))
 
 (def ^{:doc "Translates values described by a realm to values usable by transit. The defaults cover most realms."} transit
@@ -17,5 +17,5 @@
   ;; those definitions forwards/backwards-compatible to the extend possible or
   ;; needed, or expect different versions of the data.
 
-  (lang/language ::transit
+  (format/format ::transit
                  transit/extended))

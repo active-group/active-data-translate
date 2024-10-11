@@ -1,5 +1,5 @@
 (ns active.data.translate.builtin.transit
-  (:require [active.data.translate.lang :as lang]
+  (:require [active.data.translate.format :as format]
             [active.data.realm :as realm]
             [active.data.realm.inspection :as realm-inspection]
             [active.clojure.lens :as lens]
@@ -99,11 +99,11 @@
     (lens/xmap (fn to-realm [raw]
                  (when (not (and (vector? raw)
                                  (= 2 (count raw))))
-                   (throw (lang/runtime-error (str "Expected a vector of length 2 as the union representation, but got: " raw) raw)))
+                   (throw (format/runtime-error (str "Expected a vector of length 2 as the union representation, but got: " raw) raw)))
                  (let [[idx v] raw]
                    (if-let [[_realm lens] (get tags-realms-lenses-map idx)]
                      (lens/yank v lens)
-                     (throw (lang/runtime-error (str "Unexected union tag " idx) v)))))
+                     (throw (format/runtime-error (str "Unexected union tag " idx) v)))))
                (let [try-all (->> tags-realms-lenses-map
                                   (map (fn [[idx [realm lens]]]
                                          (fn [value]
@@ -112,7 +112,7 @@
                                   (apply some-fn))]
                  (fn from-realm [v]
                    (or (try-all v)
-                       (throw (lang/runtime-error "Value not contained in union realm." v))))))))
+                       (throw (format/runtime-error "Value not contained in union realm." v))))))))
 
 ;; (defn flat-union ... just try them all)
 #_(defn- flat-union [realms recurse]
@@ -152,8 +152,8 @@
     (lens/xmap (fn [edn]
                  (when (not= (count (realm-inspection/record-realm-fields realm))
                              (count edn))
-                   (throw (lang/runtime-error (str "Expected " (count (realm-inspection/record-realm-fields realm)) " values for record realm, but only got " (count edn))
-                                              edn)))
+                   (throw (format/runtime-error (str "Expected " (count (realm-inspection/record-realm-fields realm)) " values for record realm, but only got " (count edn))
+                                                edn)))
                  (let [vals (map (fn [v lens]
                                    (lens/yank v lens))
                                  edn
@@ -179,7 +179,7 @@
   (lens/xmap (fn to-realm [v]
                ;; TODO: generate more helpful messages.
                (when-not (pred v)
-                 (throw (lang/runtime-error (str "Unexpected value: " v) v)))
+                 (throw (format/runtime-error (str "Unexpected value: " v) v)))
                (lens/yank v lens))
              (fn from-realm [v]
                (lens/shove nil lens v))))
@@ -206,10 +206,10 @@
     (lens/xmap (fn to-realm [v]
                  ;; TODO: generate more helpful messages.
                  (when-not (map? v)
-                   (throw (lang/runtime-error (str "Unexpected value: " v) v)))
+                   (throw (format/runtime-error (str "Unexpected value: " v) v)))
                  (doseq [[k _v] v]
                    (when-not (expected-key? k)
-                     (throw (lang/runtime-error (str "Unexpected key in map: " k) k))))
+                     (throw (format/runtime-error (str "Unexpected key in map: " k) k))))
                  (lens/yank v lens))
                (fn from-realm [v]
                  (lens/shove nil lens v)))))
@@ -252,7 +252,7 @@
       :uuid transit-uuid
       ;; TODO: can we support :char ? :rational?
       :any id ;; assuming the value is compatible with transit. (do runtime check?; offer support for transit-realm instead of any?)
-      (throw (lang/unsupported-exn realm)))
+      (throw (format/unsupported-exn realm)))
 
     ;; TODO: support transit-realm, edn-realm?
 
@@ -276,7 +276,7 @@
      (lens/pattern (->> (realm-inspection/map-with-keys-realm-map realm)
                         (map (fn [[k value-realm]]
                                (when-not (transit? k)
-                                 (throw (lang/unsupported-exn k [realm])))
+                                 (throw (format/unsupported-exn k [realm])))
                                [(lens/member k) (lens/>> (lens/member k) (recurse value-realm))]))
                         (into {}))))
 
@@ -295,9 +295,9 @@
     (let [k (realm-inspection/map-with-tag-realm-key realm)
           tag (realm-inspection/map-with-tag-realm-value realm)]
       (when-not (transit? k)
-        (throw (lang/unsupported-exn {:key k})))
+        (throw (format/unsupported-exn {:key k})))
       (when-not (transit? tag)
-        (throw (lang/unsupported-exn {:value tag})))
+        (throw (format/unsupported-exn {:value tag})))
       (ensure-transit realm map?
                       lens/id))
 
@@ -308,8 +308,8 @@
     (let [values (realm-inspection/enum-realm-values realm)]
       (doseq [v values]
         (when-not (transit? v)
-          (throw (lang/unsupported-exn v))))
+          (throw (format/unsupported-exn v))))
       lens/id)
 
     :else
-    (throw (lang/unsupported-exn realm))))
+    (throw (format/unsupported-exn realm))))
