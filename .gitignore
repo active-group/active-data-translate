@@ -1,3 +1,6 @@
 .dir-locals.el
 .lein-failures
 target
+.clj-kondo/.cache
+.clj-kondo/imports
+.lsp/.cache

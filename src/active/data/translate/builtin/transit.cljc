@@ -58,7 +58,7 @@
              (fn from-realm [v]
                (when (some? v) (lens/shove nil lens v)))))
 
-(defn set-as-seq [seq-lens]
+(defn- set-as-seq "Turns a lens that works on sequences to a lens that works on sets." [seq-lens]
   (lens/xmap (fn to-realm [v]
                (set (lens/yank v seq-lens)))
              (fn from-realm [v]
@@ -74,86 +74,21 @@
                  {}
                  v))))
 
-(defn stable-defaults [realm recurse]
-  ;; TODO: to be called 'stable' these should all detect if a
-  ;; translated value (in all yanks) actually (still) conforms to the
-  ;; expected format. I don't think they all do yet. Introduce the notion of a runtime error to the lib?
+#_(def ^:private transit-number
+    #?(:clj id
+       :cljs (lens/xmap (fn to-realm [v]
+                        ;; js/Number or gm/Long to js/Number ?
 
-  (cond
-    (realm-inspection/builtin-scalar? realm)
-    (case (realm-inspection/builtin-scalar-realm-id realm)
-      :number id ;; TODO: is this correct?
-      :keyword id
-      :symbol id
-      :string id
-      :boolean id
-      :uuid transit-uuid
-      ;; TODO: can we support :char ? :rational?
-      :any (lang/unsupported-exn realm)
-      (throw (lang/unsupported-exn realm)))
+                        ;; v should satisfy (transit/uuid? v)
+                          (uuid (str v)))
+                        (fn from-realm [v]
+                          (transit/uuid (str v))))))
 
-    (realm-inspection/integer-from-to? realm)
-    id
-
-    (realm-inspection/real-range? realm)
-    id
-
-    (realm-inspection/optional? realm)
-    (let [inner-t (recurse (realm-inspection/optional-realm-realm realm))]
-      (optional inner-t))
-
-    (realm-inspection/sequence-of? realm)
-    (lens/mapl (recurse (realm-inspection/sequence-of-realm-realm realm)))
-
-    (realm-inspection/set-of? realm)
-    (set-as-seq (lens/mapl (recurse (realm-inspection/set-of-realm-realm realm))))
-
-    (realm-inspection/function? realm)
-    (throw (lang/unsupported-exn realm))
-
-    (realm-inspection/map-with-keys? realm)
-    (lens/pattern (->> (realm-inspection/map-with-keys-realm-map realm)
-                       (map (fn [[k value-realm]]
-                              (when-not (transit? k)
-                                (throw (lang/unsupported-exn k [realm])))
-                              [(lens/member k) (lens/>> (lens/member k) (recurse value-realm))]))
-                       (into {})))
-
-    (realm-inspection/map-of? realm)
-    ;; Note: mapl-kv would get us a nil, instead of an empty map
-    (lens/>> nil-as-empty-map
-             (lens/mapl-kv (recurse (realm-inspection/map-of-realm-key-realm realm))
-                           (recurse (realm-inspection/map-of-realm-value-realm realm))))
-
-    (realm-inspection/tuple? realm)
-    (lens/pattern (->> (realm-inspection/tuple-realm-realms realm)
-                       (map-indexed (fn [idx realm]
-                                      (lens/>> (lens/at-index idx) (recurse realm))))
-                       (vec)))
-
-    (realm-inspection/delayed? realm)
-    ;; Note: for now we assume, that at the time this translation is fetched, the realm must be resolvable.
-    (recurse (force (realm-inspection/delayed-realm-delay realm)))
-
-    (realm-inspection/named? realm)
-    (recurse (realm-inspection/named-realm-realm realm))
-
-    (realm-inspection/record? realm)
-    (throw (lang/unsupported-exn realm))
-
-    (realm-inspection/union? realm)
-    (throw (lang/unsupported-exn realm))
-
-    (realm-inspection/intersection? realm) ;; or allow? 'realm/restricted'
-    (throw (lang/unsupported-exn realm))
-
-    ;; TODO: what about map-with-tag?
-    (realm-inspection/map-with-tag? realm)
-    (throw (lang/unsupported-exn realm))
-
-    :else
-    ;; predicate realm
-    (throw (lang/unsupported-exn realm))))
+;; transit-realm ? the things that can be represented unambiguously
+#_(def transit-realm
+    (realm/union realm/string
+                 (-> realm/any
+                     (realm/restricted transit?))))
 
 (defn- tagged-union-lens [realms recurse]
   ;; represents (union r1 r2) as [0 ->r1] [1 ->r2] etc.
@@ -161,11 +96,14 @@
                                     (map-indexed (fn [idx realm]
                                                    [idx [realm (recurse realm)]]))
                                     (into {}))]
-    ;; TODO: asserts or exceptions?
-    (lens/xmap (fn to-realm [[idx v]]
-                 (if-let [[_realm lens] (get tags-realms-lenses-map idx)]
-                   (lens/yank v lens)
-                   (assert false "Invalid union tag")))
+    (lens/xmap (fn to-realm [raw]
+                 (when (not (and (vector? raw)
+                                 (= 2 (count raw))))
+                   (throw (lang/runtime-error (str "Expected a vector of length 2 as the union representation, but got: " raw) raw)))
+                 (let [[idx v] raw]
+                   (if-let [[_realm lens] (get tags-realms-lenses-map idx)]
+                     (lens/yank v lens)
+                     (throw (lang/runtime-error (str "Unexected union tag " idx) v)))))
                (let [try-all (->> tags-realms-lenses-map
                                   (map (fn [[idx [realm lens]]]
                                          (fn [value]
@@ -174,20 +112,48 @@
                                   (apply some-fn))]
                  (fn from-realm [v]
                    (or (try-all v)
-                       (assert false "Value not contained in union.")))))))
+                       (throw (lang/runtime-error "Value not contained in union realm." v))))))))
+
+;; (defn flat-union ... just try them all)
+#_(defn- flat-union [realms recurse]
+  ;; represents (union r1 r2) as r1 | r2, just trying all
+    (let [lenses (doall (map recurse realms))]
+      (lens/xmap (fn to-realm [v]
+                   (let [res (reduce (fn [_ lens]
+                                       (try (reduced [(lens/yank v lens)])
+                                          ;; TODO: runtime-error
+                                            (catch #?(:clj Exception :cljs :default) e
+                                              nil)))
+                                     nil
+                                     lenses)]
+                     (if (nil? res)
+                       (throw ...) ;; TODO runtime-error
+                       (first res))))
+                 (fn from-realm [v]
+                   (let [res (reduce (fn [_ lens]
+                                       ;; could use (realm/contains?) here to reduce attempts
+                                       (try (reduced [(lens/shove nil lens v)])
+                                            (catch #?(:clj Exception :cljs :default) e
+                                              nil)))
+                                     nil
+                                     lenses)]
+                     (if (nil? res)
+                       (throw ...)
+                       (first res)))))))
 
 (defn- flat-record-lens [realm recurse]
   ;; represents a record as a vector of the values, in the order defined by the record realm.
   (let [realms (map realm-inspection/record-realm-field-realm
                     (realm-inspection/record-realm-fields realm))
-        lenses (map recurse realms)
+        lenses (doall (map recurse realms))
         getters  (map realm-inspection/record-realm-field-getter
                       (realm-inspection/record-realm-fields realm))
         constr (realm-inspection/record-realm-constructor realm)]
     (lens/xmap (fn [edn]
-                 (assert (= (count (realm-inspection/record-realm-fields realm))
-                            (count edn))
-                         (realm-inspection/description realm))
+                 (when (not= (count (realm-inspection/record-realm-fields realm))
+                             (count edn))
+                   (throw (lang/runtime-error (str "Expected " (count (realm-inspection/record-realm-fields realm)) " values for record realm, but only got " (count edn))
+                                              edn)))
                  (let [vals (map (fn [v lens]
                                    (lens/yank v lens))
                                  edn
@@ -205,20 +171,145 @@
                              (vec edn))]
                    res)))))
 
-(defn unstable-defaults [realm recurse]
+#_(defn- tagged-record-lens [realm recurse]
+    (transit/tagged-value (record-realm-name ...)
+                          {field-name => (recurse ...) value}))
+
+(defn- ensure-transit [realm pred lens]
+  (lens/xmap (fn to-realm [v]
+               ;; TODO: generate more helpful messages.
+               (when-not (pred v)
+                 (throw (lang/runtime-error (str "Unexpected value: " v) v)))
+               (lens/yank v lens))
+             (fn from-realm [v]
+               (lens/shove nil lens v))))
+
+(defn- map-lens [key-lens value-lens]
+  (lens/xmap (fn to-realm [v]
+               (persistent! (reduce-kv (fn [res k v]
+                                         (assoc! res (lens/yank k key-lens) (lens/yank v value-lens)))
+                                       (transient {}) v)))
+             (fn from-realm [v]
+               (persistent! (reduce-kv (fn [res k v]
+                                         (assoc! res (lens/shove nil key-lens k) (lens/shove nil value-lens v)))
+                                       (transient {}) v)))))
+
+(defn- vector-lens [lenses]
+  (lens/>> (lens/default []) ;; at-index generates lists otherwise
+           (lens/pattern (->> lenses
+                              (map-indexed (fn [idx lens]
+                                             (lens/>> (lens/at-index idx) lens)))
+                              (vec)))))
+
+(defn- ensure-map-has-no-other-keys [realm lens]
+  (let [expected-key? (set (keys (realm-inspection/map-with-keys-realm-map realm)))]
+    (lens/xmap (fn to-realm [v]
+                 ;; TODO: generate more helpful messages.
+                 (when-not (map? v)
+                   (throw (lang/runtime-error (str "Unexpected value: " v) v)))
+                 (doseq [[k _v] v]
+                   (when-not (expected-key? k)
+                     (throw (lang/runtime-error (str "Unexpected key in map: " k) k))))
+                 (lens/yank v lens))
+               (fn from-realm [v]
+                 (lens/shove nil lens v)))))
+
+(defn extended [realm recurse]
+  ;; Note: this does some checks on the transit values that are read,
+  ;; but those checks only guarantee that no information is lost/silently dropped.
+  ;; The translated values may still not be 'contained' in the target
+  ;; realm, which has to be checked separately.
   (cond
-    (realm-inspection/record? realm)
-    (flat-record-lens realm recurse)
+    (realm-inspection/optional? realm)
+    (let [inner-t (recurse (realm-inspection/optional-realm-realm realm))]
+      (optional inner-t))
+
+    (realm-inspection/delayed? realm)
+    ;; Note: for now we assume, that at the time this translation is fetched, the realm must be resolvable.
+    (recurse (deref (realm-inspection/delayed-realm-delay realm)))
+
+    (realm-inspection/named? realm)
+    (recurse (realm-inspection/named-realm-realm realm))
 
     (realm-inspection/union? realm)
+    ;; or flat-union? flat-union has a smaller representation, but will have less performance.
     (tagged-union-lens (realm-inspection/union-realm-realms realm) recurse)
 
-    ;; Note: because every should conform to all intersected realms, every translation should be able to translate all values.
+    ;; Note: because every value should conform to all intersected realms, every translation should be able to translate all values.
     ;; So we can just take the first one. (can't be empty)
     (realm-inspection/intersection? realm)
+    ;; We could also try them all and use the first that works?
     (recurse (first (realm-inspection/intersection-realm-realms realm)))
 
     ;; TODO: what about map-with-tag?
+    (realm-inspection/builtin-scalar? realm)
+    (case (realm-inspection/builtin-scalar-realm-id realm)
+      :number id ;; TODO: is this correct?
+      :keyword id
+      :symbol id
+      :string id
+      :boolean id
+      :uuid transit-uuid
+      ;; TODO: can we support :char ? :rational?
+      :any id ;; assuming the value is compatible with transit. (do runtime check?; offer support for transit-realm instead of any?)
+      (throw (lang/unsupported-exn realm)))
+
+    ;; TODO: support transit-realm, edn-realm?
+
+    (realm-inspection/integer-from-to? realm)
+    id
+
+    (realm-inspection/real-range? realm)
+    id
+
+    (realm-inspection/sequence-of? realm)
+    (ensure-transit realm sequential?
+                    (lens/mapl (recurse (realm-inspection/sequence-of-realm-realm realm))))
+
+    (realm-inspection/set-of? realm)
+    (ensure-transit realm set?
+                    (set-as-seq (lens/mapl (recurse (realm-inspection/set-of-realm-realm realm)))))
+
+    (realm-inspection/map-with-keys? realm)
+    (ensure-map-has-no-other-keys
+     realm
+     (lens/pattern (->> (realm-inspection/map-with-keys-realm-map realm)
+                        (map (fn [[k value-realm]]
+                               (when-not (transit? k)
+                                 (throw (lang/unsupported-exn k [realm])))
+                               [(lens/member k) (lens/>> (lens/member k) (recurse value-realm))]))
+                        (into {}))))
+
+    (realm-inspection/map-of? realm)
+    (ensure-transit realm map?
+                    (map-lens (recurse (realm-inspection/map-of-realm-key-realm realm))
+                              (recurse (realm-inspection/map-of-realm-value-realm realm))))
+
+    (realm-inspection/tuple? realm)
+    (ensure-transit realm #(and (vector? %)
+                                (= (count %) (count (realm-inspection/tuple-realm-realms realm))))
+                    (vector-lens (doall (map recurse (realm-inspection/tuple-realm-realms realm)))))
+
+    (realm-inspection/map-with-tag? realm)
+    ;; Note: we can check that the speficic key and value are transit?, but we have to assume the rest of the map is too. Can't help with translation.
+    (let [k (realm-inspection/map-with-tag-realm-key realm)
+          tag (realm-inspection/map-with-tag-realm-value realm)]
+      (when-not (transit? k)
+        (throw (lang/unsupported-exn {:key k})))
+      (when-not (transit? tag)
+        (throw (lang/unsupported-exn {:value tag})))
+      (ensure-transit realm map?
+                      lens/id))
+
+    (realm-inspection/record? realm)
+    (flat-record-lens realm recurse)
+
+    (realm-inspection/enum? realm)
+    (let [values (realm-inspection/enum-realm-values realm)]
+      (doseq [v values]
+        (when-not (transit? v)
+          (throw (lang/unsupported-exn v))))
+      lens/id)
 
     :else
-    (stable-defaults realm recurse)))
+    (throw (lang/unsupported-exn realm))))

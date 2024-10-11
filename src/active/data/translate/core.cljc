@@ -6,6 +6,7 @@
 (def ^:private meta-key ::translations)
 
 (defn- set-translation-maker [realm lang translation]
+  ;; TODO: compile realm?
   (realm/with-metadata realm meta-key
     (let [m (get (realm-inspection/metadata realm) meta-key)]
       (assoc m (lang/language-id lang) translation))))
@@ -31,7 +32,9 @@
   (set-translation-maker realm lang make-translator))
 
 (defn- get-translator! [realm lang]
-  (let [recurse-0 #(get-translator! % lang)
+  ;; TODO we could also take a map/function from realms to translators instead of or in addition to the metadata.
+  (let [realm (realm/compile realm) ;; in particular useful to translate records into realms.
+        recurse-0 #(get-translator! % lang)
         ;; Note: when recurring with another realm, and that isn't
         ;; supported, then prepend this one in the path.
         recurse
@@ -51,7 +54,7 @@
   (let [t (get-translator! from-realm to-lang)]
     (lang/get-realm-to-lang t)))
 
-(defn translator-to [from-lang to-realm]
+(defn translator-to [to-realm from-lang]
   (let [t (get-translator! to-realm from-lang)]
     (lang/get-lang-to-realm t)))
 
@@ -59,6 +62,6 @@
   ;; pre: (realm/contains? value)
   ((translator-from from-realm to-lang) value))
 
-(defn translate-to [from-lang to-realm value]
+(defn translate-to [to-realm from-lang value]
   ;; post: (realm/contains? result)
-  ((translator-to from-lang to-realm) value))
+  ((translator-to to-realm from-lang) value))

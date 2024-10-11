@@ -1,5 +1,9 @@
 (ns active.data.translate.lang
-  (:require [active.clojure.lens :as lens]))
+  (:require [active.clojure.lens :as lens]
+            [active.data.realm.inspection :as realm-inspection]))
+
+;; Rename language => format
+;;        translation => translator
 
 ;; Translation
 
@@ -36,13 +40,13 @@
   ([id default-translations]
    (Lang. id default-translations)))
 
-(defmacro define-language
-  ([name]
-   `(def ~name
-      (langage '~name)))
-  ([name params & body]
-   `(def ~name
-      (langage '~name (fn ~params ~@body)))))
+#_(defmacro define-language
+    ([name]
+     `(def ~name
+        (langage '~name)))
+    ([name params & body]
+     `(def ~name
+        (langage '~name (fn ~params ~@body)))))
 
 (defn language-id [lang]
   (assert (lang? lang))
@@ -55,9 +59,13 @@
   ([culprit realms-path]
    (unsupported-exn nil culprit realms-path))
   ([lang culprit realms-path]
-   ;; TODO: tune this message; empty no path, pr-str? etc.
    (ex-info (if lang
-              (str "No translation to " (language-id lang) " for " (pr-str culprit) ", at " (apply str (interpose ", " (map pr-str realms-path))))
+              ;; TODO: if culprit is not a realm, the message should be different; then it's more like a certain value in the realm.
+              (str "No translation to " (language-id lang) " for " (if (realm-inspection/realm? culprit)
+                                                                     (realm-inspection/description culprit)
+                                                                     (pr-str culprit))
+                   (when-not (empty? realms-path)
+                     (str ", at " (apply str (interpose ", " (map realm-inspection/description realms-path))))))
               "")
             {:type ::unsupported
              :lang lang
@@ -94,3 +102,7 @@
   ;; Note: should throw (unsupported-exn) if realm not supported
   (let [default-fn (:default-translations lang)]
     (default-fn realm recurse)))
+
+(defn runtime-error [problem irritant]
+  (ex-info problem {:type ::runtime
+                    :irritant irritant}))
