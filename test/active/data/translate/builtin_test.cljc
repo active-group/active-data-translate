@@ -9,28 +9,28 @@
 ;; TODO: clojurescript. and interop between clj and cljs (via transit values)
 
 (defn roundtrip [realm v]
-  (core/translate-to realm  sut/transit
-                     (core/translate-from realm sut/transit v)))
+  (core/translate-to realm  sut/transit-format
+                     (core/translate-from realm sut/transit-format v)))
 
 (t/deftest empty-map-test
   (let [realm (realm/map-of realm/integer realm/integer)
         v {}
         t {}]
-    (t/is (= t (core/translate-from realm sut/transit v)))
-    (t/is (= v (core/translate-to realm sut/transit t)))))
+    (t/is (= t (core/translate-from realm sut/transit-format v)))
+    (t/is (= v (core/translate-to realm sut/transit-format t)))))
 
 (t/deftest tuple-test
   (let [realm (realm/tuple realm/string realm/integer)
         v ["foo" 42]
         t ["foo" 42]]
-    (t/is (vector? (core/translate-from realm sut/transit v)))
-    (t/is (= t (core/translate-from realm sut/transit v)))
+    (t/is (vector? (core/translate-from realm sut/transit-format v)))
+    (t/is (= t (core/translate-from realm sut/transit-format v)))
 
-    (t/is (vector? (core/translate-to realm sut/transit t)))
-    (t/is (= v (core/translate-to realm sut/transit t)))
+    (t/is (vector? (core/translate-to realm sut/transit-format t)))
+    (t/is (= v (core/translate-to realm sut/transit-format t)))
 
-    (t/is (format/runtime-error? (try (core/translate-to realm sut/transit :foo)
-                                      (catch Exception e e))))))
+    (t/is (format/runtime-error? (try (core/translate-to realm sut/transit-format :foo)
+                                      (catch #?(:clj Exception :cljs :default) e e))))))
 
 (r/def-record rec-ab
   [rec-a :- realm/string

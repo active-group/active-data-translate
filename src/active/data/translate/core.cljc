@@ -1,5 +1,5 @@
 (ns active.data.translate.core
-  (:require [active.data.translate.format :as format]
+  (:require [active.data.translate.format :as format #?@(:cljs [:include-macros true])]
             [active.data.realm :as realm]
             [active.data.realm.inspection :as realm-inspection]
             [active.clojure.lens :as lens]))

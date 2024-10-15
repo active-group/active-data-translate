@@ -1,0 +1,7 @@
+{:lein {:profile "+cljs-test"}
+
+ :builds
+ {:test {:target :karma
+         :output-to "out/test.js"
+         :ns-regexp "-test$"
+         :autorun true}}}

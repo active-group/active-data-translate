@@ -71,19 +71,29 @@
 (defn unsupported-exn? [e]
   (= ::unsupported (:type (ex-data e))))
 
+(defn ^:no-doc wrap-unsupported-exn* [thunk wrap]
+  #?(:clj
+     (try (thunk)
+          (catch Exception e
+            (if (unsupported-exn? e)
+              (throw (wrap e))
+              (throw e))))
+     :cljs
+     (try (thunk)
+          (catch :default e
+            (if (unsupported-exn? e)
+              (throw (wrap e))
+              (throw e))))))
+
 (defmacro ^:no-doc wrap-unsupported-path [realm & body]
-  `(try (do ~@body)
-        (catch #?(:clj Exception :cljs :default) e#
-          (if (unsupported-exn? e#)
-            (throw (exn-prepend-path e# ~realm))
-            (throw e#)))))
+  `(wrap-unsupported-exn* (fn [] ~@body)
+                          (fn [e#]
+                            (exn-prepend-path e# ~realm))))
 
 (defmacro ^:no-doc wrap-unsupported-format [format & body]
-  `(try (do ~@body)
-        (catch #?(:clj Exception :cljs :default) e#
-          (if (unsupported-exn? e#)
-            (throw (exn-set-format e# ~format))
-            (throw e#)))))
+  `(wrap-unsupported-exn* (fn [] ~@body)
+                          (fn [e#]
+                            (exn-set-format e# ~format))))
 
 (defn ^:no-doc get-default-translator! [format realm recurse]
   (assert (format? format))

@@ -12,6 +12,13 @@
 
   :plugins [[lein-codox "0.10.7"]]
 
+  ;; run clojurescript tests via
+  ;; > npm run test
+
+  :profiles {:cljs-test
+             {:source-paths ["src" "test"]
+              :dependencies [[thheller/shadow-cljs "2.27.1"]]}}
+
   :codox {:language :clojure
           :metadata {:doc/format :markdown}
           :themes [:rdash]

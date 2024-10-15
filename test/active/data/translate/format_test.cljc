@@ -2,7 +2,7 @@
   (:require [active.data.translate.format :as format]
             [active.data.translate.core :as core]
             [active.data.realm :as realm]
-            [active.data.record :as r]
+            [active.data.record :as r #?@(:cljs [:include-macros true])]
             [active.clojure.lens :as lens]
             [clojure.test :as t]
             [clojure.string :as string]))

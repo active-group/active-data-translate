@@ -1,8 +1,8 @@
 (ns active.data.translate.builtin
   (:require [active.data.translate.format :as format]
-            [active.data.translate.builtin.transit :as transit]))
+            [active.data.translate.builtin.transit :as builtin-transit]))
 
-(def ^{:doc "Translates values described by a realm to values usable by transit. The defaults cover most realms."} transit
+(def ^{:doc "Translates values described by a realm to values usable by transit. The defaults cover most realms."} transit-format
   ;; Note: use this only when you are ok with the coupling that this introduces.
 
   ;; Coupling can for example be
@@ -18,4 +18,4 @@
   ;; needed, or expect different versions of the data.
 
   (format/format ::transit
-                 transit/extended))
+                 builtin-transit/extended))
