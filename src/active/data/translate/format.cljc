@@ -118,45 +118,52 @@
                   [realm (constantly translator)])
                 realm-translator-map)))
 
-(defn ^:no-doc record-map-formatters-1
+(defn ^:no-doc record-map-formatter-1
   "(record-map-formatters MyRecord
-                         {:foo my-rec-foo
-                          :bar my-rec-bar})"
-  [record-realm key-getter-map]
-  (let [record-realm (realm/compile record-realm)
-        getters (->> (realm-inspection/record-realm-fields record-realm)
+                         {my-rec-foo :foo 
+                          my-rec-bar :bar})"
+
+  [record-realm spec]
+  (let [getters (->> (realm-inspection/record-realm-fields record-realm)
                      (map realm-inspection/record-realm-field-getter))
+        getter->lens (cond
+                       ;; {field-getter -> lens}
+                       (map? spec) spec
+                       ;; Alternative: [:foo :bar] that relies on the order  (lacks the reference to the field; harder to read and refactor)
+                       (vector? spec)
+                       (into {} (map vector getters spec))
+
+                       :else (assert false (str "Invalid record format spec: " spec)))
         getter? (set getters)]
-    ;; must be a map from keywords to record getters
-    (assert (every? keyword? (keys key-getter-map)))
-    (assert (every? getter? (vals key-getter-map)))
-    ;; and not the same getter multiple times.
-    (assert (apply distinct? getters))
+    (assert (every? getter? (keys getter->lens))
+            (str "No such field " (first (remove getter? (keys getter->lens))) " in " (realm-inspection/description record-realm)))
+    (assert (= (count getter->lens) (count getters))
+            (str "Missing field: " (first (remove #(contains? getter->lens %) getters)) " for " (realm-inspection/description record-realm)))
     ;; Not all getters must be used - those fields will be set to nil
-    (let [getter->key (into {} (map (fn [[key getter]]
-                                      [getter key])
-                                    key-getter-map))
-          ctor (realm-inspection/record-realm-constructor record-realm)]
-      {record-realm (fn [recurse]
-                      (let [getter->lens (->> (realm-inspection/record-realm-fields record-realm)
-                                              (map (fn [field]
-                                                     [(realm-inspection/record-realm-field-getter field)
-                                                      (recurse (realm-inspection/record-realm-field-realm field))]))
-                                              (into {}))]
-                        (lens/xmap (fn to-realm [value]
-                                     (apply ctor (map (fn [getter]
-                                                        (if (contains? getter->key getter)
-                                                          (lens/yank (get value (getter->key getter))
-                                                                     (getter->lens getter))
-                                                          ;; if getter not used, insert nil
-                                                          nil))
-                                                      getters)))
-                                   (fn from-realm [value]
-                                     (into {} (map (fn [[key getter]]
-                                                     [key (lens/shove nil (getter->lens getter) (getter value))])
-                                                   key-getter-map))))))})))
+    (let [ctor (realm-inspection/record-realm-constructor record-realm)]
+      (fn [recurse]
+        ;; adds the format translation based on the realm of the field
+        (let [getter->realm-lens (->> (realm-inspection/record-realm-fields record-realm)
+                                      (map (fn [field]
+                                             (let [getter (realm-inspection/record-realm-field-getter field)]
+                                               [getter
+                                                ;; OPT: if getter->lens are all keywords, then from-realm can be optimized
+                                                (lens/>> (getter->lens getter)
+                                                         ;; maybe use lens/id if it's realm/any? (i.e. undefined?)
+                                                         (recurse (realm-inspection/record-realm-field-realm field)))])))
+                                      (into {}))]
+          (lens/xmap (fn to-realm [value]
+                       (apply ctor (map (fn [getter]
+                                          (lens/yank value (getter->realm-lens getter)))
+                                        getters)))
+                     (fn from-realm [value]
+                       (reduce (fn [res getter]
+                                 (lens/shove res (getter->realm-lens getter) (getter value)))
+                               {}
+                               getters))))))))
 
 (defn record-map-formatters [records-map]
   (apply combine-formatters (map (fn [[record map-spec]]
-                                   (record-map-formatters-1 record map-spec))
+                                   (let [record-realm (realm/compile record)]
+                                     {record-realm (record-map-formatter-1 record-realm map-spec)}))
                                  records-map)))
