@@ -1,11 +1,10 @@
 (ns active.data.translate.reitit
   (:require [active.data.translate.core :as core]
-            [active.data.translate.format :as format]
             [active.data.realm.validation :as realm-validation]
             [active.data.realm.inspection :as realm-inspection]
+            [active.data.translate.common :as common]
             [active.data.realm :as realm]
             [active.data.record :as record]
-            [active.clojure.lens :as lens]
             [reitit.coercion :as coercion]
             [clojure.set :as set]))
 
@@ -20,6 +19,7 @@
       :to (let [to (core/translator-to realm format)]
             (fn [value]
               ;; FIXME: checking is not thread-safe; but validator only checks one level; need a deep check here.
+              ;; OR: don't do any checking?
               (try (realm-validation/checking (to value))
                    (catch Exception e
                      (coercion/map->CoercionError
@@ -70,21 +70,6 @@
 
     :else (assert false model)))
 
-(def ^{:doc "Defines a default format for string coercions, used for path and query parameters."}
-  default-string-format
-  (format/format ::default-string-format
-                 ;; TODO: maybe we can support a bit more, and unions, enums. But not everything can be supported (not as much as for bodies)
-                 (format/simple-formatters {realm/string lens/id
-                                            realm/uuid (lens/xmap (fn [s]
-                                                                    (parse-uuid s))
-                                                                  (fn [uuid]
-                                                                    (assert (uuid? uuid) uuid)
-                                                                    (str uuid)))
-                                            realm/integer (lens/xmap (fn [s]
-                                                                       (Integer/parseInt s))
-                                                                     (fn [i]
-                                                                       (Integer/toString i)))})))
-
 (defn realm-coercion
   "Returns a reitit coercion based on realms and the given realm formatter."
   ;; TODO: more docstring
@@ -92,7 +77,7 @@
   [body-format & {string-format :strings}]
   ;; see https://github.com/metosin/reitit/blob/ff99ab3ff929ca1b5fd7446d72d1a6eb07668795/modules/reitit-core/src/reitit/coercion.cljc#L39
   ;; for type/open/keywordize
-  (let [string-format (or string-format default-string-format)]
+  (let [string-format (or string-format common/default-string-format)]
     (reify coercion/Coercion
       (-get-name [_this] :active.data.translate)
       (-get-options [_this] nil)

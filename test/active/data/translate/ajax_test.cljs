@@ -1,7 +1,11 @@
 (ns active.data.translate.ajax-test
   (:require [active.data.translate.ajax :as sut]
+            [active.data.translate.format :as format]
             [ajax.core :as ajax :include-macros true]
             [active.data.translate.shared-example :as ex]
+            [active.data.realm :as realm]
+            [active.clojure.lens :as lens]
+            [clojure.string :as string]
             [clojure.test :as t]
             [cognitect.transit :as ctransit]
             [ajax.protocols]))
@@ -9,7 +13,7 @@
 (defrecord InterceptXhrIo [info-atom response]
   ajax.protocols/AjaxImpl
   (-js-ajax-request [_this request handler]
-    (reset! info-atom (select-keys request [:body :headers]))
+    (reset! info-atom (select-keys request [:body :headers :uri]))
     (handler (ajax.protocols/map->Response response))))
 
 (defn intercept [request info-atom response]
@@ -26,8 +30,11 @@
                                (reset! result res)))
              (intercept raw-request raw-response))))
     ;; only synchronous because of the Impl above.
-    [(-> @raw-request
-         (update :headers dissoc "Accept"))
+    [(let [r (-> @raw-request
+                 (update :headers dissoc "Accept"))]
+       (if (empty? (:headers r))
+         (dissoc r :headers)
+         r))
      @result]))
 
 (defn- to-transit [response]
@@ -73,7 +80,8 @@
                                               :headers {"Content-Type" "application/transit+json"}
                                               :status 200})))))]
     (t/is (= {:y "y"} result))
-    (t/is (= {:body "[\"^ \",\"~:x\",\"x\"]"
+    (t/is (= {:uri "/"
+              :body "[\"^ \",\"~:x\",\"x\"]"
               :headers {"Content-Type" "application/transit+json"}}
              raw-request)))
 
@@ -84,7 +92,8 @@
                                (wrap-request {:body {:y "y"}
                                               :status 200})))))]
     (t/is (= {:y "y"} result))
-    (t/is (= {:body {:x "x"}} raw-request))))
+    (t/is (= {:uri "/"
+              :body {:x "x"}} raw-request))))
 
 (t/deftest post-params-test
   (let [[raw-request result]
@@ -96,6 +105,24 @@
                                (wrap-request {:body {:total 4}
                                               :status 200})
                                (sut/use-transit-format ex/my-body-format)))))]
-    (t/is (= {:body {:x 1, :y 3}} raw-request))
+    (t/is (= {:uri "/"
+              :body {:x 1, :y 3}} raw-request))
     ;; Note: if they are not=, the test runner might fail to calculate a diff (because of dissoc restriction in records)
     (t/is (= (ex/plus-response {ex/res-value 4}) result))))
+
+(t/deftest get-params-test
+  (let [query-params-format
+        (format/format :my-string-format
+                       (format/simple-formatters {realm/string (lens/xmap string/reverse string/reverse)
+                                                  realm/integer (lens/xmap inc dec)}))
+
+        [raw-request _result]
+        (with-interceptor
+          (fn [wrap-request]
+            (ajax/GET "/" (-> {:params-realms {:a realm/string
+                                               :b realm/integer}
+                               :params {:a "foo" :b 42}}
+                              (wrap-request {:body nil
+                                             :status 200})
+                              (sut/use-format ex/my-body-format :strings query-params-format)))))]
+    (t/is (= {:uri "/?a=oof&b=41"} raw-request))))
