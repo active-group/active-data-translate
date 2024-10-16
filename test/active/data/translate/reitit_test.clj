@@ -1,41 +1,24 @@
 (ns active.data.translate.reitit-test
   (:require [active.data.translate.reitit :as sut]
-            [active.data.translate.format :as format]
+            [active.data.translate.shared-example :as ex]
             [active.data.realm :as realm]
-            [active.data.record :as r]
-            [active.clojure.lens :as lens]
             [reitit.ring.coercion :as rrc]
             [reitit.ring :as ring]
             [clojure.test :as t]))
 
-(r/def-record plus-request
-  [req-x :- realm/integer
-   req-y :- realm/integer])
-
-(r/def-record plus-response
-  [res-value :- realm/integer])
-
-(def my-body-format
-  (format/format :my-body-format
-                 (format/combine-formatters
-                  (format/simple-formatters {realm/integer lens/id})
-                  (format/record-map-formatters
-                   {plus-request [:x :y]
-                    plus-response [:total]}))))
-
 (def plus-endpoint
-  {:coercion (sut/realm-coercion my-body-format)
-   :parameters {:body plus-request
+  {:coercion (sut/realm-coercion ex/my-body-format)
+   :parameters {:body ex/plus-request
                 :path {:bar realm/integer}
                 :query {:foo realm/integer}}
-   :responses {200 {:body plus-response}}
+   :responses {200 {:body ex/plus-response}}
    :handler (fn [{:keys [parameters]}]
-              (let [total (+ (-> parameters :body req-x)
-                             (-> parameters :body req-y)
+              (let [total (+ (-> parameters :body ex/req-x)
+                             (-> parameters :body ex/req-y)
                              (-> parameters :path :bar)
                              (-> parameters :query :foo))]
                 {:status 200
-                 :body (plus-response {res-value total})}))})
+                 :body (ex/plus-response {ex/res-value total})}))})
 
 (def app
   (ring/ring-handler
