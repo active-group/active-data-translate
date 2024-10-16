@@ -26,11 +26,22 @@
 
 (declare unsupported-exn)
 
+(defn- compile-formatters [formatters]
+  ;; Note: when using a map {record record-formatter}, the records have to be compile into a realm.
+  ;; Convenient to do this automatically here (although quite excessive)
+  (if (map? formatters)
+    (->> formatters
+         (map (fn [[k v]]
+                [(realm/compile k) v]))
+         (into {}))
+    ;; if it's a function, it has to consider the difference between record and record-realms (and other things) itself.
+    formatters))
+
 (defn format
   ([id]
    (format id (fn [_recurse] (fn [realm] (throw (unsupported-exn realm))))))
   ([id default-formatters]
-   (Format. id default-formatters)))
+   (Format. id (compile-formatters default-formatters))))
 
 (defn format-id [format]
   (assert (format? format))
@@ -114,27 +125,30 @@
 (defn combine-formatters [& formatters]
   ;; earlier ones have precendence
   (reduce (fn [res formatters]
-            (if (and (map? res) (map formatters))
+            (if (and (map? res) (map? formatters))
               (merge formatters res)
               (fn [realm]
                 (or (res realm)
                     (formatters realm)))))
           {}
-          formatters))
+          (map compile-formatters formatters)))
 
-(defn simple-formatters [realm-translator-map]
+(defn simple [translator]
   ;; for those that don't need to recur
-  (into {} (map (fn [[realm translator]]
-                  [realm (constantly translator)])
-                realm-translator-map)))
+  (constantly translator))
 
-(defn ^:no-doc record-map-formatter-1
-  "(record-map-formatters MyRecord
-                         {my-rec-foo :foo 
-                          my-rec-bar :bar})"
+(defn record-map
+  "(record-map MyRecord
+               {my-rec-foo :foo 
+                my-rec-bar :bar})
 
-  [record-realm spec]
-  (let [getters (->> (realm-inspection/record-realm-fields record-realm)
+  or
+
+  (record-map MyRecord [:foo :bar])"
+
+  [record spec]
+  (let [record-realm (realm/compile record)
+        getters (->> (realm-inspection/record-realm-fields record-realm)
                      (map realm-inspection/record-realm-field-getter))
         getter->lens (cond
                        ;; {field-getter -> lens}
@@ -150,10 +164,11 @@
     (assert (= (count getter->lens) (count getters))
             (str "Missing field: " (first (remove #(contains? getter->lens %) getters)) " for " (realm-inspection/description record-realm)))
     ;; Not all getters must be used - those fields will be set to nil
-    (let [ctor (realm-inspection/record-realm-constructor record-realm)]
+    (let [ctor (realm-inspection/record-realm-constructor record-realm)
+          fields (realm-inspection/record-realm-fields record-realm)]
       (fn [recurse]
         ;; adds the format translation based on the realm of the field
-        (let [getter->realm-lens (->> (realm-inspection/record-realm-fields record-realm)
+        (let [getter->realm-lens (->> fields
                                       (map (fn [field]
                                              (let [getter (realm-inspection/record-realm-field-getter field)]
                                                [getter
@@ -172,9 +187,3 @@
                                  (lens/shove res (getter->realm-lens getter) (getter value)))
                                {}
                                getters))))))))
-
-(defn record-map-formatters [records-map]
-  (apply combine-formatters (map (fn [[record map-spec]]
-                                   (let [record-realm (realm/compile record)]
-                                     {record-realm (record-map-formatter-1 record-realm map-spec)}))
-                                 records-map)))

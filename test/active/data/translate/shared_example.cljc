@@ -13,9 +13,7 @@
 
 (def my-body-format
   (format/format :my-body-format
-                 (format/combine-formatters
-                  (format/simple-formatters {realm/integer lens/id})
-                  (format/record-map-formatters
-                   {plus-request [:x :y]
-                    plus-response [:total]}))))
+                 {realm/integer (format/simple lens/id)
+                  plus-request (format/record-map plus-request [:x :y])
+                  plus-response (format/record-map plus-response [:total])}))
 

@@ -18,14 +18,12 @@
 (t/deftest record-map-formatter-test
   ;; Note: is the lens instead of the keyword really helpful? That /can/ be done with a special realm;
   ;; what can be done if it's forced to be a keyword, is a faster transformation; and realm of the output?
-  (let [rec-fmt (format/record-map-formatters
-                 {rec-ab {rec-a :a
-                          rec-b (lens/>> :b inc-lens)}})
-        fmt (format/format :my-format
-                           (format/combine-formatters
-                            (format/simple-formatters {realm/string reverse-string
-                                                       realm/integer lens/id})
-                            rec-fmt))]
+  (let [fmt (format/format :my-format
+                           {realm/string (format/simple reverse-string)
+                            realm/integer (format/simple lens/id)
+                            rec-ab (format/record-map rec-ab
+                                                      {rec-a :a
+                                                       rec-b (lens/>> :b inc-lens)})})]
     (t/is (= {:a "oof"
               :b 41}
              (core/translate-from rec-ab fmt (rec-ab rec-a "foo"
@@ -36,14 +34,10 @@
                                             :b 11})))))
 
 (t/deftest record-map-formatter-from-vector-test
-  (let [rec-fmt (format/record-map-formatters
-                 {rec-ab [:a :b]})
-        fmt (format/format :my-format
-                           (format/combine-formatters
-                            (format/simple-formatters
-                             {realm/string lens/id
-                              realm/integer lens/id})
-                            rec-fmt))]
+  (let [fmt (format/format :my-format
+                           {realm/string (format/simple lens/id)
+                            realm/integer (format/simple lens/id)
+                            rec-ab (format/record-map rec-ab [:a :b])})]
     (t/is (= {:a "foo"
               :b 12}
              (core/translate-from rec-ab fmt (rec-ab rec-a "foo"

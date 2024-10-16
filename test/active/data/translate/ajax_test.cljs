@@ -113,8 +113,8 @@
 (t/deftest get-params-test
   (let [query-params-format
         (format/format :my-string-format
-                       (format/simple-formatters {realm/string (lens/xmap string/reverse string/reverse)
-                                                  realm/integer (lens/xmap inc dec)}))
+                       {realm/string (format/simple (lens/xmap string/reverse string/reverse))
+                        realm/integer (format/simple (lens/xmap inc dec))})
 
         [raw-request _result]
         (with-interceptor

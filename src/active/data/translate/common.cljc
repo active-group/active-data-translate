@@ -31,6 +31,6 @@
   default-string-format
   (format/format ::default-string-format
                  ;; TODO: maybe we can support a bit more, and unions, enums. But not everything can be supported (not as much as for bodies)
-                 (format/simple-formatters {realm/string lens/id
-                                            realm/uuid uuid-lens
-                                            realm/integer integer-lens})))
+                 {realm/string (format/simple lens/id)
+                  realm/uuid (format/simple uuid-lens)
+                  realm/integer (format/simple integer-lens)}))
