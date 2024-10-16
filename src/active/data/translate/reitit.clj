@@ -1,6 +1,6 @@
 (ns active.data.translate.reitit
   (:require [active.data.translate.core :as core]
-            [active.data.realm.validation :as realm-validation]
+            ;; [active.data.realm.validation :as realm-validation]
             [active.data.realm.inspection :as realm-inspection]
             [active.data.translate.common :as common]
             [active.data.realm :as realm]
@@ -16,15 +16,17 @@
   (let [realm (realm/compile realm)]
     (map->RealmModel
      {:from (core/translator-from realm format)
-      :to (let [to (core/translator-to realm format)]
-            (fn [value]
+      :to (core/translator-to realm format)
+      ;; TODO: turn format/runtime-error into coercion errors?!
+      #_(let [to (core/translator-to realm format)]
+          (fn [value]
               ;; FIXME: checking is not thread-safe; but validator only checks one level; need a deep check here.
               ;; OR: don't do any checking?
-              (try (realm-validation/checking (to value))
-                   (catch Exception e
-                     (coercion/map->CoercionError
-                      {:realm (realm-inspection/description realm)
-                       :problems [(:error (ex-data e))]})))))})))
+            (try (realm-validation/checking (to value))
+                 (catch Exception e
+                   (coercion/map->CoercionError
+                    {:realm (realm-inspection/description realm)
+                     :problems [(:error (ex-data e))]})))))})))
 
 (defn- compile-model [body-format string-format model _name]
   ;; Note: model may be {:foo realm} for query and path parameters
