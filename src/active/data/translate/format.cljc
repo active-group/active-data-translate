@@ -102,7 +102,7 @@
     (when-let [fmt (default-fn realm)]
       (fmt recurse))))
 
-(defn runtime-error [problem irritant]
+(defn runtime-error [problem irritant] ;; TODO: rename; value-error, validation-error?
   (ex-info problem {:type ::runtime
                     :irritant irritant}))
 
@@ -163,6 +163,7 @@
                                                          (recurse (realm-inspection/record-realm-field-realm field)))])))
                                       (into {}))]
           (lens/xmap (fn to-realm [value]
+                       ;; TODO: runtime-error is value contains more keys. (but then 'lenses' must be keys)
                        (apply ctor (map (fn [getter]
                                           (lens/yank value (getter->realm-lens getter)))
                                         getters)))

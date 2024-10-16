@@ -55,10 +55,12 @@
   (get-translator! from-realm to-format))
 
 (defn translator-from [from-realm to-format]
+  ;; realm value => formatted value
   (let [t (translator from-realm to-format)]
     #(lens/shove nil t %)))
 
 (defn translator-to [to-realm from-format]
+  ;; formatted value => realm value
   (let [t (translator to-realm from-format)]
     #(lens/yank % t)))
 

@@ -1,6 +1,6 @@
 (ns active.data.translate.shared-example
   (:require [active.data.translate.format :as format]
-            [active.data.record :as r]
+            [active.data.record :as r #?@(:cljs [:include-macros true])]
             [active.clojure.lens :as lens]
             [active.data.realm :as realm]))
 
