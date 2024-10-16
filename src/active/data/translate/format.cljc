@@ -14,7 +14,6 @@
 
 ;; Formatters is a function/map that takes a realm and returns
 ;; formatter (or nil).
-;; TODO: rename formatters... to format?
 
 ;; A Format is an identifier, together with default formatters
 
@@ -47,6 +46,9 @@
   (assert (format? format))
   (:id format))
 
+(defn- realm-path-str [realms-path]
+  (apply str (interpose " > " (map realm-inspection/description realms-path))))
+
 (defn unsupported-exn
   ;; culprit should be a realm, or a simple value.
   ([culprit]
@@ -55,18 +57,33 @@
    (unsupported-exn nil culprit realms-path))
   ([format culprit realms-path]
    (assert (every? realm-inspection/realm? realms-path) (first (remove realm-inspection/realm? realms-path)))
-   (ex-info (if format
-              ;; TODO: if culprit is not a realm, the message should be different; then it's more like a certain value in the realm.
-              (str "No translation to " (format-id format) " for realm " (if (realm-inspection/realm? culprit)
-                                                                           (realm-inspection/description culprit)
-                                                                           (pr-str culprit))
-                   (when-not (empty? realms-path)
-                     (str ", at " (apply str (interpose ", " (map realm-inspection/description realms-path))))))
-              "")
+   (ex-info (str "No translation"
+                 (if format (str " to " (format-id format)) "")
+                 " for "
+                 (if (realm-inspection/realm? culprit)
+                   (str "realm " (realm-inspection/description culprit))
+                   (pr-str culprit))
+                 (when-not (empty? realms-path)
+                   (str ", at " (realm-path-str realms-path))))
             {:type ::unsupported
              :format format
              :value culprit
              :path realms-path})))
+
+(defn format-error
+  ([problem irritant]
+   (format-error problem irritant nil))
+  ([problem irritant realms-path]
+   (ex-info (str "Error formatting " (pr-str irritant) ": " problem
+                 (when-not (empty? realms-path)
+                   (str ", at " (realm-path-str realms-path))))
+            {:type ::format-error
+             :problem problem
+             :irritant irritant
+             :path realms-path})))
+
+(defn format-error? [exn]
+  (= ::format-error (:type (ex-data exn))))
 
 (defn ^:no-doc exn-prepend-path [exn realm]
   (assert (realm-inspection/realm? realm) realm)
@@ -81,6 +98,20 @@
 
 (defn unsupported-exn? [e]
   (= ::unsupported (:type (ex-data e))))
+
+(defn ^:no-doc wrap-format-error* [thunk wrap]
+  #?(:clj
+     (try (thunk)
+          (catch Exception e
+            (if (format-error? e)
+              (throw (wrap e))
+              (throw e))))
+     :cljs
+     (try (thunk)
+          (catch :default e
+            (if (format-error? e)
+              (throw (wrap e))
+              (throw e))))))
 
 (defn ^:no-doc wrap-unsupported-exn* [thunk wrap]
   #?(:clj
@@ -106,19 +137,39 @@
                           (fn [e#]
                             (exn-set-format e# ~format))))
 
-(defn ^:no-doc get-default-translator! [format realm recurse]
+(defmacro ^:no-doc wrap-format-error-path [realm & body]
+  `(wrap-format-error* (fn [] ~@body)
+                       (fn [e#]
+                         (exn-prepend-path e# ~realm))))
+
+(defmacro ^:no-doc wrap-format-error-message [& body]
+  ;; 'recreated' the exception message after paths have been added along the way.
+  `(wrap-format-error* (fn [] ~@body)
+                       (fn [e#]
+                         (let [d# (ex-data e#)]
+                           (format-error (:problem d#) (:irritant d#) (:path d#))))))
+
+(defn wrap-format-error-path* [realm translator]
+  ;; Note: for large objects this will be a lot of try-catches, but what ya gonna do? (maybe a debug flag?)
+  (lens/lens
+   (fn [v]
+     (wrap-format-error-path realm (lens/yank v translator)))
+   (fn [d v]
+     (wrap-format-error-path realm (lens/shove d translator v)))))
+
+(defn ^:no-doc wrap-format-error-message* [translator]
+  (lens/lens
+   (fn [v]
+     (wrap-format-error-message (lens/yank v translator)))
+   (fn [d v]
+     (wrap-format-error-message (lens/shove d translator v)))))
+
+(defn ^:no-doc get-default-formatter [format realm]
   (assert (format? format))
-  ;; Note: should throw (unsupported-exn) if realm not supported
+  ;; Note: may throw (unsupported-exn) if realm not supported
   (let [default-fn (:default-formatters format)]
     (when-let [fmt (default-fn realm)]
-      (fmt recurse))))
-
-(defn runtime-error [problem irritant] ;; TODO: rename; value-error, validation-error?
-  (ex-info problem {:type ::runtime
-                    :irritant irritant}))
-
-(defn runtime-error? [exn]
-  (= ::runtime (:type (ex-data exn))))
+      fmt)))
 
 ;; utils to define formats.
 
@@ -150,19 +201,20 @@
   (let [record-realm (realm/compile record)
         getters (->> (realm-inspection/record-realm-fields record-realm)
                      (map realm-inspection/record-realm-field-getter))
-        getter->lens (cond
-                       ;; {field-getter -> lens}
+        getter->keys (cond
+                       ;; {field-getter -> key}
                        (map? spec) spec
                        ;; Alternative: [:foo :bar] that relies on the order  (lacks the reference to the field; harder to read and refactor)
                        (vector? spec)
                        (into {} (map vector getters spec))
 
                        :else (assert false (str "Invalid record format spec: " spec)))
+        expected-key? (set (vals getter->keys))
         getter? (set getters)]
-    (assert (every? getter? (keys getter->lens))
-            (str "No such field " (first (remove getter? (keys getter->lens))) " in " (realm-inspection/description record-realm)))
-    (assert (= (count getter->lens) (count getters))
-            (str "Missing field: " (first (remove #(contains? getter->lens %) getters)) " for " (realm-inspection/description record-realm)))
+    (assert (every? getter? (keys getter->keys))
+            (str "No such field " (first (remove getter? (keys getter->keys))) " in " (realm-inspection/description record-realm)))
+    (assert (= (count getter->keys) (count getters))
+            (str "Missing field: " (first (remove #(contains? getter->keys %) getters)) " for " (realm-inspection/description record-realm)))
     ;; Not all getters must be used - those fields will be set to nil
     (let [ctor (realm-inspection/record-realm-constructor record-realm)
           fields (realm-inspection/record-realm-fields record-realm)]
@@ -172,17 +224,22 @@
                                       (map (fn [field]
                                              (let [getter (realm-inspection/record-realm-field-getter field)]
                                                [getter
-                                                ;; OPT: if getter->lens are all keywords, then from-realm can be optimized
-                                                (lens/>> (getter->lens getter)
+                                                (lens/>> (lens/member (getter->keys getter))
                                                          ;; maybe use lens/id if it's realm/any? (i.e. undefined?)
                                                          (recurse (realm-inspection/record-realm-field-realm field)))])))
                                       (into {}))]
           (lens/xmap (fn to-realm [value]
-                       ;; TODO: runtime-error is value contains more keys. (but then 'lenses' must be keys)
+                       (when-not (map? value)
+                         (throw (format-error "Not a map" value)))
+                       (when-not (empty? (remove expected-key? (keys value)))
+                         ;; allow less keys for now (the field realm may still complain about nil)
+                         (throw (format-error "Invalid key" (first (remove expected-key? (keys value))))))
                        (apply ctor (map (fn [getter]
                                           (lens/yank value (getter->realm-lens getter)))
                                         getters)))
                      (fn from-realm [value]
+                       (when-not (realm/contains? record-realm value)
+                         (throw (format-error "Not this record" value)))
                        (reduce (fn [res getter]
                                  (lens/shove res (getter->realm-lens getter) (getter value)))
                                {}
