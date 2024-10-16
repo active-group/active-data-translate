@@ -7,3 +7,4 @@ target
 .shadow-cljs
 node_modules
 out
+pom.xml
