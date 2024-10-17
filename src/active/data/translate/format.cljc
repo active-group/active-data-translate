@@ -99,7 +99,7 @@
 (defn unsupported-exn? [e]
   (= ::unsupported (:type (ex-data e))))
 
-(defn ^:no-doc wrap-format-error* [thunk wrap]
+(defn- wrap-format-error* [thunk wrap]
   #?(:clj
      (try (thunk)
           (catch Exception e
@@ -113,7 +113,7 @@
               (throw (wrap e))
               (throw e))))))
 
-(defn ^:no-doc wrap-unsupported-exn* [thunk wrap]
+(defn- wrap-unsupported-exn* [thunk wrap]
   #?(:clj
      (try (thunk)
           (catch Exception e
@@ -127,42 +127,42 @@
               (throw (wrap e))
               (throw e))))))
 
-(defmacro ^:no-doc wrap-unsupported-path [realm & body]
-  `(wrap-unsupported-exn* (fn [] ~@body)
-                          (fn [e#]
-                            (exn-prepend-path e# ~realm))))
+(defn ^:no-doc wrap-unsupported-path* [realm thunk]
+  (wrap-unsupported-exn* thunk
+                         (fn [e]
+                           (exn-prepend-path e realm))))
 
-(defmacro ^:no-doc wrap-unsupported-format [format & body]
-  `(wrap-unsupported-exn* (fn [] ~@body)
-                          (fn [e#]
-                            (exn-set-format e# ~format))))
+(defn ^:no-doc wrap-unsupported-format* [format thunk]
+  (wrap-unsupported-exn* thunk
+                         (fn [e]
+                           (exn-set-format e format))))
 
-(defmacro ^:no-doc wrap-format-error-path [realm & body]
-  `(wrap-format-error* (fn [] ~@body)
-                       (fn [e#]
-                         (exn-prepend-path e# ~realm))))
+(defn- wrap-format-error-path** [realm thunk]
+  (wrap-format-error* thunk
+                      (fn [e]
+                        (exn-prepend-path e realm))))
 
-(defmacro ^:no-doc wrap-format-error-message [& body]
+(defn- wrap-format-error-message** [thunk]
   ;; 'recreated' the exception message after paths have been added along the way.
-  `(wrap-format-error* (fn [] ~@body)
-                       (fn [e#]
-                         (let [d# (ex-data e#)]
-                           (format-error (:problem d#) (:irritant d#) (:path d#))))))
+  (wrap-format-error* thunk
+                      (fn [e]
+                        (let [d (ex-data e)]
+                          (format-error (:problem d) (:irritant d) (:path d))))))
 
-(defn wrap-format-error-path* [realm translator]
+(defn ^:no-doc wrap-format-error-path* [realm translator]
   ;; Note: for large objects this will be a lot of try-catches, but what ya gonna do? (maybe a debug flag?)
   (lens/lens
    (fn [v]
-     (wrap-format-error-path realm (lens/yank v translator)))
+     (wrap-format-error-path** realm #(lens/yank v translator)))
    (fn [d v]
-     (wrap-format-error-path realm (lens/shove d translator v)))))
+     (wrap-format-error-path** realm #(lens/shove d translator v)))))
 
 (defn ^:no-doc wrap-format-error-message* [translator]
   (lens/lens
    (fn [v]
-     (wrap-format-error-message (lens/yank v translator)))
+     (wrap-format-error-message** #(lens/yank v translator)))
    (fn [d v]
-     (wrap-format-error-message (lens/shove d translator v)))))
+     (wrap-format-error-message** #(lens/shove d translator v)))))
 
 (defn ^:no-doc get-default-formatter [format realm]
   (assert (format? format))

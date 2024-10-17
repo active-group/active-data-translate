@@ -1,5 +1,5 @@
 (ns active.data.translate.core
-  (:require [active.data.translate.format :as format #?@(:cljs [:include-macros true])]
+  (:require [active.data.translate.format :as format]
             [active.data.realm :as realm]
             [active.data.realm.inspection :as realm-inspection]
             [active.clojure.lens :as lens]))
@@ -35,8 +35,8 @@ the given target format attached."
         ;; supported, then prepend this one in the path.
         recurse
         (fn [other-realm]
-          (format/wrap-unsupported-path realm
-                                        (recurse-0 other-realm)))
+          (format/wrap-unsupported-path* realm
+                                         #(recurse-0 other-realm)))
 
         translator
         (or (let [formatter (or (get-realm-formatter realm format)
@@ -47,9 +47,9 @@ the given target format attached."
     (format/wrap-format-error-path* realm translator)))
 
 (defn- get-translator! [realm format]
-  (format/wrap-unsupported-format
+  (format/wrap-unsupported-format*
    format
-   (format/wrap-format-error-message* (get-translator-0 realm format))))
+   #(format/wrap-format-error-message* (get-translator-0 realm format))))
 
 (defn translator-lens [from-realm to-format]
   (get-translator! from-realm to-format))
