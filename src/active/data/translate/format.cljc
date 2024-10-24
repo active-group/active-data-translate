@@ -244,3 +244,25 @@
                                  (lens/shove res (getter->realm-lens getter) (getter value)))
                                {}
                                getters))))))))
+
+(defn tagged-map
+  "Wraps any value in a map with a fixed tag and a two keys.
+
+  {realm-x (tagged-record :tag \"my-tag\" :content realm-x)}
+  "
+  [tag-key tag-value content-key content-realm]
+  (fn [recurse]
+    (let [content-lens (recurse content-realm)]
+      (lens/xmap (fn from-realm [content]
+                   {tag-key tag-value
+                    content-key (lens/yank content content-lens)})
+                 (fn to-realm [value]
+                   (when-not (map? value)
+                     (throw (format-error "Not a map" value)))
+                   (when-not (contains? value tag-key)
+                     (throw (format-error "Missing tag" value)))
+                   (when-not (= tag-value (get value tag-key))
+                     (throw (format-error "Unexpected tag" (get value tag-key))))
+
+                   (lens/shove nil content-lens (get value content-key)))))))
+
