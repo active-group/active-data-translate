@@ -25,9 +25,7 @@
   ```
   (record-map MyRecord [:foo :bar])
   ```
-  
   "
-
   [record spec]
   (let [record-realm (realm/compile record)
         getters (->> (realm-inspection/record-realm-fields record-realm)
@@ -46,7 +44,6 @@
             (str "No such field " (first (remove getter? (keys getter->keys))) " in " (realm-inspection/description record-realm)))
     (assert (= (count getter->keys) (count getters))
             (str "Missing field: " (first (remove #(contains? getter->keys %) getters)) " for " (realm-inspection/description record-realm)))
-    ;; Not all getters must be used - those fields will be set to nil
     (let [ctor (realm-inspection/record-realm-constructor record-realm)
           fields (realm-inspection/record-realm-fields record-realm)]
       (fn [resolve]
@@ -63,15 +60,17 @@
                        (when-not (map? value)
                          (throw (format/format-error "Not a map" value)))
                        (when-not (empty? (remove expected-key? (keys value)))
-                         ;; allow less keys for now (the field realm may still complain about nil)
-                         ;; TODO: really? make it optional?
                          (throw (format/format-error "Invalid key" (first (remove expected-key? (keys value))))))
+
+                       ;; TODO: enable user to define backwards compatibility? e.g. a default for added fields?
+                       ;; (record-map Foo {foo-a :a} :defaults {:a 42}) like so?
+                       (when-not (empty? (remove (set (keys value)) expected-key?))
+                         (throw (format/format-error "Missing key" (first (remove (set (keys value)) expected-key?)))))
+
                        (apply ctor (map (fn [getter]
                                           (lens/yank value (getter->realm-lens getter)))
                                         getters)))
                      (fn from-realm [value]
-                       (when-not (realm/contains? record-realm value)
-                         (throw (format/format-error "Not this record" value)))
                        (reduce (fn [res getter]
                                  (lens/shove res (getter->realm-lens getter) (getter value)))
                                {}
@@ -101,7 +100,7 @@
                                            [k (resolve realm)]))
                                     (into {}))]
         (lens/xmap (fn to-realm [value]
-                     (when-not (or (vector? value) (not= 2 (count value)))
+                     (when-not (and (vector? value) (= 2 (count value)))
                        (throw (format/format-error "Not a tuple of length 2" value)))
                      (when-not (contains? tag-translator-map (first value))
                        (throw (format/format-error "Unexpected tag" (first value))))

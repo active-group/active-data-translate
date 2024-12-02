@@ -50,3 +50,48 @@
              (to {:a "foo"
                   :b 12})))))
 
+(t/deftest tagged-union-map-test
+  (let [union (realm/union realm/string realm/integer)
+
+        fmt (format/format :my-format
+                           {realm/string (formatter/simple lens/id)
+                            realm/integer (formatter/simple lens/id)
+                            union (formatter/tagged-union-map :tag :value {"str" realm/string
+                                                                           "int" realm/integer})})
+        from (core/translator-from union fmt)
+        to (core/translator-to union fmt)]
+
+    (t/is (= {:tag "str"
+              :value "foo"}
+             (from "foo")))
+    (t/is (= {:tag "int"
+              :value 42}
+             (from 42)))
+
+    (t/is (= "foo"
+             (to {:tag "str"
+                  :value "foo"})))
+    (t/is (= 42
+             (to {:tag "int"
+                  :value 42})))))
+
+(t/deftest tagged-union-tuple-test
+  (let [union (realm/union realm/string realm/integer)
+
+        fmt (format/format :my-format
+                           {realm/string (formatter/simple lens/id)
+                            realm/integer (formatter/simple lens/id)
+                            union (formatter/tagged-union-tuple {"str" realm/string
+                                                                 "int" realm/integer})})
+        from (core/translator-from union fmt)
+        to (core/translator-to union fmt)]
+
+    (t/is (= ["str" "foo"]
+             (from "foo")))
+    (t/is (= ["int" 42]
+             (from 42)))
+
+    (t/is (= "foo"
+             (to ["str" "foo"])))
+    (t/is (= 42
+             (to ["int" 42])))))
