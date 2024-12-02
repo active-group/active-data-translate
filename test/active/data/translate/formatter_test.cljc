@@ -22,27 +22,31 @@
                             realm/integer (format/simple inc-lens)
                             rec-ab (formatter/record-map rec-ab
                                                          {rec-a :a
-                                                          rec-b :b})})]
+                                                          rec-b :b})})
+        from (core/translator-from rec-ab fmt)
+        to (core/translator-to rec-ab fmt)]
     (t/is (= {:a "oof"
               :b 41}
-             (core/translate-from rec-ab fmt (rec-ab rec-a "foo"
-                                                     rec-b 42))))
+             (from (rec-ab rec-a "foo"
+                           rec-b 42))))
     (t/is (= (rec-ab rec-a "foo"
                      rec-b 12)
-             (core/translate-to rec-ab fmt {:a "oof"
-                                            :b 11})))))
+             (to {:a "oof"
+                  :b 11})))))
 
 (t/deftest record-map-formatter-from-vector-test
   (let [fmt (format/format :my-format
                            {realm/string (format/simple lens/id)
                             realm/integer (format/simple lens/id)
-                            rec-ab (formatter/record-map rec-ab [:a :b])})]
+                            rec-ab (formatter/record-map rec-ab [:a :b])})
+        from (core/translator-from rec-ab fmt)
+        to (core/translator-to rec-ab fmt)]
     (t/is (= {:a "foo"
               :b 12}
-             (core/translate-from rec-ab fmt (rec-ab rec-a "foo"
-                                                     rec-b 12))))
+             (from (rec-ab rec-a "foo"
+                           rec-b 12))))
     (t/is (= (rec-ab rec-a "foo"
                      rec-b 12)
-             (core/translate-to rec-ab fmt {:a "foo"
-                                            :b 12})))))
+             (to {:a "foo"
+                  :b 12})))))
 

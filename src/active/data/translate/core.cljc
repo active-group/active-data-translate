@@ -28,6 +28,10 @@ the given target format attached."
   [realm format formatter]
   (set-realm-formatter (realm/compile realm) format formatter))
 
+;; TODO: all the exception-handling is probably not very performant
+;; (or is it?); it should probably be optional to have better error
+;; message or better performance.
+
 (defn- get-translator-0 [realm format]
   (let [realm (realm/compile realm)
         recurse-0 #(get-translator-0 % format)
@@ -54,20 +58,18 @@ the given target format attached."
 (defn translator-lens [from-realm to-format]
   (get-translator! from-realm to-format))
 
-(defn translator-from [from-realm to-format]
+(defn translator-from
+  "Returns a function that translates values of the given realm into a
+  formatted value, according to the given `format`."
+  [from-realm to-format]
   ;; realm value => formatted value
   (let [t (translator-lens from-realm to-format)]
     #(lens/shove nil t %)))
 
-(defn translator-to [to-realm from-format]
+(defn translator-to
+  "Returns a function that translates formatted values into values of the
+  given realm, according to the given `format`."
+  [to-realm from-format]
   ;; formatted value => realm value
   (let [t (translator-lens to-realm from-format)]
     #(lens/yank % t)))
-
-(defn translate-from [from-realm to-format value]
-  ;; pre: (realm/contains? value)
-  ((translator-from from-realm to-format) value))
-
-(defn translate-to [to-realm from-format value]
-  ;; post: (realm/contains? result)
-  ((translator-to to-realm from-format) value))

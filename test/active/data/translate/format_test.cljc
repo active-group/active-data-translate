@@ -27,16 +27,19 @@
                    (-> (ex-data e)
                        (assoc :message (ex-message e))
                        (dissoc :type))
-                   (throw e)))))]
+                   (throw e)))))
+
+        from (core/translator-from rec-ab fmt)
+        to (core/translator-to rec-ab fmt)]
     (t/is (= {:irritant "foo"
               :problem "Don't like this"
               :message "Error formatting \"foo\": Don't like this, at record active.data.translate.format-test/rec-ab with fields rec-a from realm string, rec-b from realm integer > string"
               :path [(realm/compile rec-ab) realm/string]}
-             (get-error-data #(core/translate-from rec-ab fmt (rec-ab rec-a "foo"
-                                                                      rec-b 12)))))
+             (get-error-data #(from (rec-ab rec-a "foo"
+                                            rec-b 12)))))
     (t/is (= {:irritant "foo"
               :problem "Don't like this"
               :message "Error formatting \"foo\": Don't like this, at record active.data.translate.format-test/rec-ab with fields rec-a from realm string, rec-b from realm integer > string"
               :path [(realm/compile rec-ab) realm/string]}
-             (get-error-data #(core/translate-to rec-ab fmt {:a "foo"
-                                                             :b 12}))))))
+             (get-error-data #(to {:a "foo"
+                                   :b 12}))))))
