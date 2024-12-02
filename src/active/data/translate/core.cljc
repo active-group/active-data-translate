@@ -34,18 +34,18 @@ the given target format attached."
 
 (defn- get-translator-0 [realm format]
   (let [realm (realm/compile realm)
-        recurse-0 #(get-translator-0 % format)
+        resolve-0 #(get-translator-0 % format)
         ;; Note: when recurring with another realm, and that isn't
         ;; supported, then prepend this one in the path.
-        recurse
+        resolve
         (fn [other-realm]
           (format/wrap-unsupported-path* realm
-                                         #(recurse-0 other-realm)))
+                                         #(resolve-0 other-realm)))
 
         translator
         (or (let [formatter (or (get-realm-formatter realm format)
                                 (format/get-default-formatter format realm))]
-              (formatter recurse))
+              (formatter resolve))
             ;; else:
             (throw (format/unsupported-exn realm)))]
     (format/wrap-format-error-path* realm translator)))

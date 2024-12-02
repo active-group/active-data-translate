@@ -9,7 +9,7 @@
 ;; (fn ([format-value] realm-value)
 ;;     ([_ realm-value] format-value))
 
-;; A Formatter is a function that takes a 'recurse' function (which
+;; A Formatter is a function that takes a 'resolve' function (which
 ;; returns translators for other realms) and returns a translator.
 
 ;; Formatters is a function/map that takes a realm and returns
@@ -38,7 +38,7 @@
 
 (defn format
   ([id]
-   (format id (fn [_recurse] (fn [realm] (throw (unsupported-exn realm))))))
+   (format id (fn [_resolve] (fn [realm] (throw (unsupported-exn realm))))))
   ([id default-formatters]
    (Format. id (compile-formatters default-formatters))))
 

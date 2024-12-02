@@ -44,7 +44,7 @@
     ;; Not all getters must be used - those fields will be set to nil
     (let [ctor (realm-inspection/record-realm-constructor record-realm)
           fields (realm-inspection/record-realm-fields record-realm)]
-      (fn [recurse]
+      (fn [resolve]
         ;; adds the format translation based on the realm of the field
         (let [getter->realm-lens (->> fields
                                       (map (fn [field]
@@ -52,7 +52,7 @@
                                                [getter
                                                 (lens/>> (lens/member (getter->keys getter))
                                                          ;; maybe use lens/id if it's realm/any? (i.e. undefined?)
-                                                         (recurse (realm-inspection/record-realm-field-realm field)))])))
+                                                         (resolve (realm-inspection/record-realm-field-realm field)))])))
                                       (into {}))]
           (lens/xmap (fn to-realm [value]
                        (when-not (map? value)
@@ -79,10 +79,10 @@
                            (map (fn [[k r]]
                                   [k (realm/compile r)]))
                            (into {}))]
-    (fn [recurse]
+    (fn [resolve]
       (let [tag-translator-map (->> tag-realm-map
                                     (map (fn [[k realm]]
-                                           [k (recurse realm)]))
+                                           [k (resolve realm)]))
                                     (into {}))]
         (lens/xmap (fn to-realm [value]
                      (when-not (or (vector? value) (not= 2 (count value)))
@@ -103,8 +103,8 @@
   "Formatter that distinguishes between different realms depending on a tag value in a map."
   [tag-key content-key tag-realm-map]
   (let [tup (tagged-tuple tag-realm-map)]
-    (fn [recurse]
-      (let [lens (tup recurse)]
+    (fn [resolve]
+      (let [lens (tup resolve)]
         (lens/xmap (fn to-realm [value]
                      (when-not (map? value)
                        (throw (format/format-error "Not a map" value)))
@@ -136,7 +136,7 @@
     (assert (= (count extern-intern-map)
                (count intern-extern-map))
             "Duplicate value in contants map")
-    (fn [_recurse]
+    (fn [_resolve]
       (lens/xmap (fn to-realm [value]
                    (let [r (get extern-intern-map value ::not-found)]
                      (when (= ::not-found r)
