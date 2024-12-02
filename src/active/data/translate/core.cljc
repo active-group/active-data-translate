@@ -14,14 +14,6 @@
 (defn- get-realm-formatter [realm format]
   (get (get (realm-inspection/metadata realm) meta-key) (format/format-id format)))
 
-(defn add-realm-translator
-  "Returns a copy of the given realm, with the given simple translator to
-the given target format attached."
-  ([realm format format-to-realm realm-to-format]
-   (add-realm-translator realm format (lens/xmap format-to-realm realm-to-format)))
-  ([realm format lens]
-   (set-realm-formatter (realm/compile realm) format (format/simple lens))))
-
 (defn add-realm-formatter
   "Returns a copy of the given realm, with a formatter to the given
   target format attached."

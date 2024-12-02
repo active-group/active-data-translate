@@ -194,7 +194,3 @@ example)."
                     (formatters realm)))))
           {}
           (map compile-formatters formatters)))
-
-(defn simple [translator]
-  ;; for those that don't need to recur
-  (constantly translator))

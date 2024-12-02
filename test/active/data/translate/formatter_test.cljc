@@ -18,8 +18,8 @@
 
 (t/deftest record-map-formatter-test
   (let [fmt (format/format :my-format
-                           {realm/string (format/simple reverse-string)
-                            realm/integer (format/simple inc-lens)
+                           {realm/string (formatter/simple reverse-string)
+                            realm/integer (formatter/simple inc-lens)
                             rec-ab (formatter/record-map rec-ab
                                                          {rec-a :a
                                                           rec-b :b})})
@@ -36,8 +36,8 @@
 
 (t/deftest record-map-formatter-from-vector-test
   (let [fmt (format/format :my-format
-                           {realm/string (format/simple lens/id)
-                            realm/integer (format/simple lens/id)
+                           {realm/string (formatter/simple lens/id)
+                            realm/integer (formatter/simple lens/id)
                             rec-ab (formatter/record-map rec-ab [:a :b])})
         from (core/translator-from rec-ab fmt)
         to (core/translator-to rec-ab fmt)]

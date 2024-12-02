@@ -5,6 +5,11 @@
             [active.data.realm :as realm]
             [active.clojure.lens :as lens]))
 
+(defn simple
+  "A simple (non recursive) formatter directly based on a translator lens."
+  [translator]
+  (constantly translator))
+
 (defn record-map
   "Formatter to represent a record as a map with explicit keys.
 
@@ -157,15 +162,15 @@
     (assert (= (count extern-intern-map)
                (count intern-extern-map))
             "Duplicate value in contants map")
-    (fn [_resolve]
-      (lens/xmap (fn to-realm [value]
-                   (let [r (get extern-intern-map value ::not-found)]
-                     (when (= ::not-found r)
-                       (throw (format/format-error "Undefined constant" value)))
-                     r))
-                 (fn from-realm [value]
-                   (let [r (get intern-extern-map value ::not-found)]
-                     (when (= ::not-found r)
-                       (throw (format/format-error "Unexpected constant" value)))
-                     r))))))
+    (simple
+     (lens/xmap (fn to-realm [value]
+                  (let [r (get extern-intern-map value ::not-found)]
+                    (when (= ::not-found r)
+                      (throw (format/format-error "Undefined constant" value)))
+                    r))
+                (fn from-realm [value]
+                  (let [r (get intern-extern-map value ::not-found)]
+                    (when (= ::not-found r)
+                      (throw (format/format-error "Unexpected constant" value)))
+                    r))))))
 

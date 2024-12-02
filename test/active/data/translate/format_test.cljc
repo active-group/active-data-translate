@@ -13,9 +13,9 @@
 
 (t/deftest format-error-path-test
   (let [fmt (format/format :my-format
-                           {realm/string (format/simple (lens/xmap (fn [v] (throw (format/format-error "Don't like this" v)))
-                                                                   (fn [v] (throw (format/format-error "Don't like this" v)))))
-                            realm/integer (format/simple lens/id)
+                           {realm/string (formatter/simple (lens/xmap (fn [v] (throw (format/format-error "Don't like this" v)))
+                                                                      (fn [v] (throw (format/format-error "Don't like this" v)))))
+                            realm/integer (formatter/simple lens/id)
                             rec-ab (formatter/record-map rec-ab [:a :b])})
         get-error-data
         (fn [thunk]
