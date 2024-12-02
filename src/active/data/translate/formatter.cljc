@@ -72,8 +72,19 @@
                                {}
                                getters))))))))
 
-(defn tagged-tuple
-  "Formatter that distinguishes between different realms depending on the value of the first part of a tuple."
+(defn tagged-union-tuple
+  "Formatter that distinguishes between different realms depending on the
+   value of the first part of a tuple.
+  
+  For example:
+  ```
+  (tagged-union-tuple {\"foo\" foo-realm})
+  ```
+  returns a formatter that can be used for a union realm that contains `foo-realm`, where the formatted values look like:
+  ```
+  [\"foo\" <foo-value>]
+  ```
+  "
   [tag-realm-map]
   (let [tag-realm-map (->> tag-realm-map
                            (map (fn [[k r]]
@@ -100,9 +111,19 @@
                        (throw (format/format-error "Value not contained in any of the realms" content)))))))))
 
 (defn tagged-union-map
-  "Formatter that distinguishes between different realms depending on a tag value in a map."
+  "Formatter that distinguishes between different realms depending on a tag value in a map.
+
+  For example:
+  ```
+  (tagged-union-map :tag :value {\"foo\" foo-realm})
+  ```
+  returns a formatter that can be used for a union realm that contains `foo-realm`, where the formatted values look like:
+  ```
+  {:tag \"foo\" :value <foo-value>}
+  ```
+  "
   [tag-key content-key tag-realm-map]
-  (let [tup (tagged-tuple tag-realm-map)]
+  (let [tup (tagged-union-tuple tag-realm-map)]
     (fn [resolve]
       (let [lens (tup resolve)]
         (lens/xmap (fn to-realm [value]
@@ -121,7 +142,7 @@
                         content-key content})))))))
 
 (defn constants
-  "Translate fixed values, like in a realm/enum
+  "Formatter that translates fixed values, like in a realm/enum
 
   Usage:
   ```

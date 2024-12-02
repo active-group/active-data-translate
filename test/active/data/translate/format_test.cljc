@@ -5,8 +5,7 @@
             [active.data.realm :as realm]
             [active.data.record :as r #?@(:cljs [:include-macros true])]
             [active.clojure.lens :as lens]
-            [clojure.test :as t]
-            [clojure.string :as string]))
+            [clojure.test :as t]))
 
 (r/def-record rec-ab
   [rec-a :- realm/string

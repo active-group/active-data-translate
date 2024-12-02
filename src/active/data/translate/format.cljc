@@ -21,7 +21,10 @@
 
 (defrecord ^:private Format [id default-formatters])
 
-(def format? (partial instance? Format))
+(def ^:private format-f? (partial instance? Format))
+
+(defn format? "Tests if `v` is a [[format]]." [v]
+  (format-f? v))
 
 (declare unsupported-exn)
 
@@ -37,12 +40,17 @@
     formatters))
 
 (defn format
+  "Defines a new format, given a map (or function) from realms to
+formatters and an arbitrary id value (a namespaced keyword for
+example)."
   ([id]
    (format id (fn [_resolve] (fn [realm] (throw (unsupported-exn realm))))))
-  ([id default-formatters]
-   (Format. id (compile-formatters default-formatters))))
+  ([id formatters]
+   (Format. id (compile-formatters formatters))))
 
-(defn format-id [format]
+(defn format-id
+  "Returns the id given to [[format]]."
+  [format]
   (assert (format? format))
   (:id format))
 
@@ -173,7 +181,10 @@
 
 ;; utils to define formats.
 
-(defn combine-formatters [& formatters]
+(defn combine-formatters
+  "Combines formatters (i.e. maps or functions from realm to formatter) into one.
+  Earlier formatters for a realm take precedence over later ones."
+  [& formatters]
   ;; earlier ones have precendence
   (reduce (fn [res formatters]
             (if (and (map? res) (map? formatters))
