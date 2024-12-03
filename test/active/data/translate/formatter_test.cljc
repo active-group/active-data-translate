@@ -50,6 +50,59 @@
              (to {:a "foo"
                   :b 12})))))
 
+(t/deftest record-map-options-test
+  (let [basics {realm/string (formatter/simple lens/id)
+                realm/integer (formatter/simple lens/id)}
+        fmt
+        (format/format :my-format
+                       (merge basics
+                              {rec-ab (formatter/record-map rec-ab [:a :b])}))
+
+        strict-fmt
+        (format/format :my-format
+                       (merge basics
+                              {rec-ab (formatter/record-map rec-ab [:a :b]
+                                                            :strict? true)}))
+
+        fmt-with-default
+        (format/format :my-format
+                       (merge basics
+                              {rec-ab (formatter/record-map rec-ab [:a :b]
+                                                            ;; Note that the 42 here is not put through the integer formatter
+                                                            :defaults {rec-b 42})}))]
+
+    (t/testing "ignores extra keys per default"
+      (let [to (core/translator-to rec-ab fmt)]
+        (t/is (= (rec-ab rec-a "foo"
+                         rec-b 12)
+                 (to {:a "foo"
+                      :b 12
+                      :c "test"})))))
+
+    (t/testing "throws on extra keys in strict mode"
+      (let [to (core/translator-to rec-ab strict-fmt)]
+        (t/is (format/format-error?
+               (try (to {:a "foo"
+                         :b 12
+                         :c "test"})
+                    nil
+                    (catch #?(:clj Exception :cljs :default) e
+                      e))))))
+
+    (t/testing "throws on missing keys per default"
+      (let [to (core/translator-to rec-ab fmt)]
+        (t/is (format/format-error?
+               (try (to {:a "foo"})
+                    nil
+                    (catch #?(:clj Exception :cljs :default) e
+                      e))))))
+
+    (t/testing "uses default for missing keys"
+      (let [to (core/translator-to rec-ab fmt-with-default)]
+        (t/is (= (rec-ab rec-a "foo"
+                         rec-b 42)
+                 (to {:a "foo"})))))))
+
 (t/deftest tagged-union-map-test
   (let [union (realm/union realm/string realm/integer)
 

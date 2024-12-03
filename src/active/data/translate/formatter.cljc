@@ -13,11 +13,20 @@
 (defn record-map
   "Formatter to represent a record as a map with explicit keys.
 
+  Options are:
+
+  `:strict?`: if set then a format-error is thrown when the map contains
+  unknown keys. By default they are ignored.
+
+  `:defaults`: a map of defaults for record fields. If none is given then a
+  format-error is thrown if the parsed map does not contain a defined key.
+
   Usage:
   ```
   (record-map MyRecord
               {my-rec-foo :foo 
-               my-rec-bar :bar})
+               my-rec-bar :bar}
+              :defaults {my-rec-foo \"value\"})
   ```
   
   or
@@ -26,55 +35,69 @@
   (record-map MyRecord [:foo :bar])
   ```
   "
-  [record spec]
+  [record spec & {strict? :strict? defaults :defaults}]
   (let [record-realm (realm/compile record)
+        record-name (realm-inspection/record-realm-name record-realm)
+        ;; Note: 'getters' is in the order expected by the constructor.
         getters (->> (realm-inspection/record-realm-fields record-realm)
                      (map realm-inspection/record-realm-field-getter))
         getter->keys (cond
                        ;; {field-getter -> key}
-                       (map? spec) spec
+                       (map? spec)
+                       (let [getter? (set getters)]
+                         (assert (every? getter? (keys spec))
+                                 (str "No such field " (first (remove getter? (keys spec))) " in " record-name))
+                         (assert (= (count spec) (count getters))
+                                 (str "Missing field: " (first (remove #(contains? spec %) getters)) " for " record-name))
+                         spec)
                        ;; Alternative: [:foo :bar] that relies on the order  (lacks the reference to the field; harder to read and refactor)
                        (vector? spec)
-                       (into {} (map vector getters spec))
+                       (do
+                         (assert (= (count spec) (count getters))
+                                 (str "Record " record-name " has " (count getters) " fields. Given: " (count spec)))
+                         (into {} (map vector getters spec)))
 
                        :else (assert false (str "Invalid record format spec: " spec)))
         expected-key? (set (vals getter->keys))
-        getter? (set getters)]
-    (assert (every? getter? (keys getter->keys))
-            (str "No such field " (first (remove getter? (keys getter->keys))) " in " (realm-inspection/description record-realm)))
-    (assert (= (count getter->keys) (count getters))
-            (str "Missing field: " (first (remove #(contains? getter->keys %) getters)) " for " (realm-inspection/description record-realm)))
-    (let [ctor (realm-inspection/record-realm-constructor record-realm)
-          fields (realm-inspection/record-realm-fields record-realm)]
-      (fn [resolve]
-        ;; adds the format translation based on the realm of the field
-        (let [getter->realm-lens (->> fields
-                                      (map (fn [field]
-                                             (let [getter (realm-inspection/record-realm-field-getter field)]
-                                               [getter
-                                                (lens/>> (lens/member (getter->keys getter))
-                                                         ;; maybe use lens/id if it's realm/any? (i.e. undefined?)
-                                                         (resolve (realm-inspection/record-realm-field-realm field)))])))
-                                      (into {}))]
-          (lens/xmap (fn to-realm [value]
-                       (when-not (map? value)
-                         (throw (format/format-error "Not a map" value)))
+        ctor (realm-inspection/record-realm-constructor record-realm)
+        fields (realm-inspection/record-realm-fields record-realm)]
+    (fn [resolve]
+      ;; adds the format translation based on the realm of the field
+      (let [getter->realm-lens (->> fields
+                                    (map (fn [field]
+                                           (let [getter (realm-inspection/record-realm-field-getter field)]
+                                             [getter
+                                              ;; maybe use lens/id if it's realm/any? (i.e. undefined?)
+                                              (resolve (realm-inspection/record-realm-field-realm field))])))
+                                    (into {}))]
+        (lens/xmap (fn to-realm [value]
+                     (when-not (map? value)
+                       (throw (format/format-error "Not a map" value)))
+
+                     (when strict?
                        (when-not (empty? (remove expected-key? (keys value)))
-                         (throw (format/format-error "Invalid key" (first (remove expected-key? (keys value))))))
+                         (throw (format/format-error "Invalid key" (first (remove expected-key? (keys value)))))))
 
-                       ;; TODO: enable user to define backwards compatibility? e.g. a default for added fields?
-                       ;; (record-map Foo {foo-a :a} :defaults {:a 42}) like so?
-                       (when-not (empty? (remove (set (keys value)) expected-key?))
-                         (throw (format/format-error "Missing key" (first (remove (set (keys value)) expected-key?)))))
+                     (apply ctor (map (fn [getter]
+                                        (let [key (getter->keys getter)]
+                                          (cond
+                                            (contains? value key)
+                                            (lens/yank (get value key) (getter->realm-lens getter))
 
-                       (apply ctor (map (fn [getter]
-                                          (lens/yank value (getter->realm-lens getter)))
-                                        getters)))
-                     (fn from-realm [value]
-                       (reduce (fn [res getter]
-                                 (lens/shove res (getter->realm-lens getter) (getter value)))
-                               {}
-                               getters))))))))
+                                            (contains? defaults getter)
+                                            (get defaults getter)
+
+                                            :else
+                                            (throw (format/format-error "Missing key" (first (remove (set (keys value)) expected-key?)))))))
+                                      getters)))
+                   (fn from-realm [value]
+                     (-> (reduce (fn [res getter]
+                                   (let [key (getter->keys getter)]
+                                     (assoc! res key
+                                             (lens/shove nil (getter->realm-lens getter) (getter value)))))
+                                 (transient {})
+                                 getters)
+                         (persistent!))))))))
 
 (defn tagged-union-tuple
   "Formatter that distinguishes between different realms depending on the
