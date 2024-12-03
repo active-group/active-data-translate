@@ -104,6 +104,12 @@
 (defn tagged-union-tuple
   "Formatter that distinguishes between different realms depending on the
    value of the first part of a tuple.
+
+  Options are:
+  
+  `:fallback`: a function taking a tag and value, whose return value
+  is used when the translated value has an unknown tag. If not given,
+  a format-error is thrown.
   
   For example:
   ```
@@ -114,7 +120,7 @@
   [\"foo\" <foo-value>]
   ```
   "
-  [tag-realm-map]
+  [tag-realm-map & {fallback :fallback}]
   (let [tag-realm-map (->> tag-realm-map
                            (map (fn [[k r]]
                                   [k (realm/compile r)]))
@@ -127,9 +133,12 @@
         (lens/xmap (fn to-realm [value]
                      (when-not (and (vector? value) (= 2 (count value)))
                        (throw (format/format-error "Not a tuple of length 2" value)))
-                     (when-not (contains? tag-translator-map (first value))
-                       (throw (format/format-error "Unexpected tag" (first value))))
-                     (lens/yank (second value) (get tag-translator-map (first value))))
+                     (let [[tag content] value]
+                       (if-not (contains? tag-translator-map tag)
+                         (if (some? fallback)
+                           (fallback tag content)
+                           (throw (format/format-error "Unexpected tag" (first value))))
+                         (lens/yank (second value) (get tag-translator-map (first value))))))
                    (fn from-realm [content]
                      (if-let [[_ result] (reduce-kv (fn [_res tag realm]
                                                       (when (realm/contains? realm content)
@@ -140,8 +149,15 @@
                        (throw (format/format-error "Value not contained in any of the realms" content)))))))))
 
 (defn tagged-union-map
-  "Formatter that distinguishes between different realms depending on a tag value in a map.
+  "Formatter that distinguishes between different realms depending on a
+   tag value in a map.
 
+  Options are:
+
+  `:fallback`: a function taking a tag and value, whose return value
+  is used when the translated value has an unknown tag. If not given,
+  a format-error is thrown.
+  
   For example:
   ```
   (tagged-union-map :tag :value {\"foo\" foo-realm})
@@ -151,8 +167,9 @@
   {:tag \"foo\" :value <foo-value>}
   ```
   "
-  [tag-key content-key tag-realm-map]
-  (let [tup (tagged-union-tuple tag-realm-map)]
+  [tag-key content-key tag-realm-map & {fallback :fallback}]
+  (let [tup (tagged-union-tuple tag-realm-map
+                                :fallback fallback)]
     (fn [resolve]
       (let [lens (tup resolve)]
         (lens/xmap (fn to-realm [value]
@@ -173,12 +190,17 @@
 (defn constants
   "Formatter that translates fixed values, like in a realm/enum
 
+  Options are:
+
+  `:fallback`: a function called on unknown values. If not given, a
+  format-error is thrown in those case.
+
   Usage:
   ```
   (constants {:foo \"foo\"})
   ```
   "
-  [intern-extern-map]
+  [intern-extern-map & {fallback :fallback}]
   (let [extern-intern-map (->> intern-extern-map
                                (map (fn [[k v]]
                                       [v k]))
@@ -189,11 +211,14 @@
     (simple
      (lens/xmap (fn to-realm [value]
                   (let [r (get extern-intern-map value ::not-found)]
-                    (when (= ::not-found r)
-                      (throw (format/format-error "Undefined constant" value)))
-                    r))
+                    (if (= ::not-found r)
+                      (if fallback
+                        (fallback value)
+                        (throw (format/format-error "Undefined constant" value)))
+                      r)))
                 (fn from-realm [value]
                   (let [r (get intern-extern-map value ::not-found)]
+                    ;; Note: fallback is not used here intentionally.
                     (when (= ::not-found r)
                       (throw (format/format-error "Unexpected constant" value)))
                     r))))))

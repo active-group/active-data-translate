@@ -135,7 +135,9 @@
                            {realm/string formatter/id
                             realm/integer formatter/id
                             union (formatter/tagged-union-tuple {"str" realm/string
-                                                                 "int" realm/integer})})
+                                                                 "int" realm/integer}
+                                                                :fallback (fn [tag value]
+                                                                            [:unknown tag value]))})
         from (core/translator-from union fmt)
         to (core/translator-to union fmt)]
 
@@ -147,4 +149,21 @@
     (t/is (= "foo"
              (to ["str" "foo"])))
     (t/is (= 42
-             (to ["int" 42])))))
+             (to ["int" 42])))
+
+    ;; using the fallback
+    (t/is (= [:unknown "xxx" "yyy"]
+             (to ["xxx" "yyy"])))))
+
+(t/deftest constants-test
+  (let [enum (realm/enum :foo)
+        fmt (format/format :my-format
+                           {enum (formatter/constants {:foo "foo"}
+                                                      :fallback (fn [other] [:other other]))})
+        from (core/translator-from enum fmt)
+        to (core/translator-to enum fmt)]
+
+    (t/is (= :foo (to "foo")))
+    (t/is (= [:other "bar"] (to "bar")))
+
+    (t/is (= "foo" (from :foo)))))
