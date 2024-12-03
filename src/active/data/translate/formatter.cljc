@@ -10,6 +10,8 @@
   [translator]
   (constantly translator))
 
+(def ^{:doc "Identity formatter, when no translation is needed for a realm."} id (simple lens/id))
+
 (defn record-map
   "Formatter to represent a record as a map with explicit keys.
 

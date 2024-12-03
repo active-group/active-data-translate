@@ -36,8 +36,8 @@
 
 (t/deftest record-map-formatter-from-vector-test
   (let [fmt (format/format :my-format
-                           {realm/string (formatter/simple lens/id)
-                            realm/integer (formatter/simple lens/id)
+                           {realm/string formatter/id
+                            realm/integer formatter/id
                             rec-ab (formatter/record-map rec-ab [:a :b])})
         from (core/translator-from rec-ab fmt)
         to (core/translator-to rec-ab fmt)]
@@ -51,8 +51,8 @@
                   :b 12})))))
 
 (t/deftest record-map-options-test
-  (let [basics {realm/string (formatter/simple lens/id)
-                realm/integer (formatter/simple lens/id)}
+  (let [basics {realm/string formatter/id
+                realm/integer formatter/id}
         fmt
         (format/format :my-format
                        (merge basics
@@ -107,8 +107,8 @@
   (let [union (realm/union realm/string realm/integer)
 
         fmt (format/format :my-format
-                           {realm/string (formatter/simple lens/id)
-                            realm/integer (formatter/simple lens/id)
+                           {realm/string formatter/id
+                            realm/integer formatter/id
                             union (formatter/tagged-union-map :tag :value {"str" realm/string
                                                                            "int" realm/integer})})
         from (core/translator-from union fmt)
@@ -132,8 +132,8 @@
   (let [union (realm/union realm/string realm/integer)
 
         fmt (format/format :my-format
-                           {realm/string (formatter/simple lens/id)
-                            realm/integer (formatter/simple lens/id)
+                           {realm/string formatter/id
+                            realm/integer formatter/id
                             union (formatter/tagged-union-tuple {"str" realm/string
                                                                  "int" realm/integer})})
         from (core/translator-from union fmt)
