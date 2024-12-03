@@ -6,7 +6,7 @@
                  [de.active-group/active-data "0.2.2-SNAPSHOT"]
                  [de.active-group/active-clojure "0.43.0"]]
 
-  :plugins [[lein-codox "0.10.7"]]
+  :plugins [[lein-codox "0.10.8"]]
 
   ;; run clojurescript tests via
   ;; > npm run test
@@ -15,8 +15,6 @@
              {:source-paths ["src" "test"]
               :dependencies [[thheller/shadow-cljs "2.27.1"]]}}
 
-  :codox {:language :clojure
-          :metadata {:doc/format :markdown}
-          :themes [:rdash]
+  :codox {:metadata {:doc/format :markdown}
           :src-dir-uri "http://github.com/active-group/active-monad/blob/master/"
           :src-linenum-anchor-prefix "L"})
