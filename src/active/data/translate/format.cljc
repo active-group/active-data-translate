@@ -71,6 +71,8 @@ example)."
                  (if (realm-inspection/realm? culprit)
                    (str "realm " (realm-inspection/description culprit))
                    (pr-str culprit))
+                 ;; TODO: that's usually way too much/long, as 'higher' descriptions include all of the content descriptions.
+                 ;; Maybe we need a different, more explicit way of building helful error messages.
                  (when-not (empty? realms-path)
                    (str ", at " (realm-path-str realms-path))))
             {:type ::unsupported
@@ -82,6 +84,7 @@ example)."
   ([problem irritant]
    (format-error problem irritant nil))
   ([problem irritant realms-path]
+   ;; TODO: for errors when 'parsing' the realm-path is not that interesting, or rather too much information.
    (ex-info (str "Error formatting " (pr-str irritant) ": " problem
                  (when-not (empty? realms-path)
                    (str ", at " (realm-path-str realms-path))))
