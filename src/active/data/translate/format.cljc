@@ -31,6 +31,9 @@
 (defn- compile-formatters [formatters]
   ;; Note: when using a map {record record-formatter}, the records have to be compile into a realm.
   ;; Convenient to do this automatically here (although quite excessive)
+  ;; The following assertion should prevent a mistake that is easy to make.
+  (assert (not (format-f? formatters))
+          "The formatters must not be a `Format`.")
   (if (map? formatters)
     (->> formatters
          (map (fn [[k v]]
