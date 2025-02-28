@@ -35,8 +35,8 @@
                                          #(resolve-0 other-realm)))
 
         translator
-        (or (let [formatter (or (get-realm-formatter realm format)
-                                (format/get-default-formatter format realm))]
+        (or (when-let [formatter (or (get-realm-formatter realm format)
+                                     (format/get-default-formatter format realm))]
               (formatter resolve))
             ;; else:
             (throw (format/unsupported-exn realm)))]

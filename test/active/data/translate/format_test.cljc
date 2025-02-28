@@ -42,3 +42,15 @@
               :path [(realm/compile rec-ab) realm/string]}
              (get-error-data #(to {:a "foo"
                                    :b 12}))))))
+
+(t/deftest unsupported-test
+  (let [fmt (format/format :my-format {})
+        unsup? (fn [t]
+                 (try (t)
+                      nil
+                      (catch #?(:clj Exception :cljs :default) e
+                        (if (format/unsupported-exn? e)
+                          e
+                          (throw e)))))]
+    (t/is (unsup? #(core/translator-from realm/any fmt)))
+    (t/is (unsup? #(core/translator-to realm/any fmt)))))
