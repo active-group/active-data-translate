@@ -1,9 +1,10 @@
 [![Clojars Project](https://img.shields.io/clojars/v/de.active-group/active-data-translate.svg)](https://clojars.org/de.active-group/active-data-translate)
 [![cljdoc badge](https://cljdoc.org/badge/de.active-group/active-data-translate)](https://cljdoc.org/d/de.active-group/active-data-translate/CURRENT)
 
-This goal of this library is to facilitate translating back and forth
-between data in a form described by [[realms]] and a different form,
-usually EDN or Transit.
+The goal of this library is to facilitate translating back and forth
+between data in a form described by
+[realms](https://github.com/active-group/active-data) and a different
+form, usually EDN or Transit.
 
 [Latest Version](https://clojars.org/de.active-group/active-data-translate)
 
@@ -18,8 +19,8 @@ Given some data described by realms, for example a record:
 (require '[active.data.realm :as realm])
 
 (r/def-record user
-  [user-id realm/integer
-   user-name realm/string])
+  [user-id :- realm/integer
+   user-name :- realm/string])
 ```
 
 We can define a format that translates between instances of the record
@@ -31,11 +32,11 @@ translations for strings and integers:
 (require '[active.data.translate.formatter :as formatter])
 
 (def my-edn-format
-  (format :my-edn-format
-          {realm/string formatter/id
-           realm/integer formatter/id
-           user (formatter/record-map user {user-id :id
-                                            user-name :name})}))
+  (format/format :my-edn-format
+                 {realm/string formatter/id
+                  realm/integer formatter/id
+                  user (formatter/record-map user {user-id :id
+                                                   user-name :name})}))
 ```
 
 Using the format, we can create functions that translate between the
@@ -48,10 +49,10 @@ two:
 (def edn-to-user (translate/translator-to user my-edn-format))
 
 (= {:id 1 :name "Alice"}
-   (edn-from-user (user user-id 1 user-name "Alice"))
+   (edn-from-user (user user-id 1 user-name "Alice")))
 
 (= (user user-id 1 user-name "Alice")
-   (edn-to-user {:id 1 :name "Alice"})
+   (edn-to-user {:id 1 :name "Alice"}))
 ```
 
 ## License
