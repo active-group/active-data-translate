@@ -76,18 +76,16 @@
                  (translator/translator (fn from-extern [m]
                                           (when-not (map? m)
                                             (throw (translator/format-error "Not a map" m)))
-                                          (-> (map (fn [k t]
-                                                     [k (translator/with-error-path k
-                                                          ((translator/from-extern t) (get m k)))])
-                                                   (keys keys-realm-map)
-                                                   value-translators)
-                                              (into {})))
+                                          (into {} (map (fn [k t]
+                                                          [k (translator/with-error-path k
+                                                               ((translator/from-extern t) (get m k)))])
+                                                        (keys keys-realm-map)
+                                                        value-translators)))
                                         (fn to-extern [m]
-                                          (-> (map (fn [k t]
-                                                     [k ((translator/to-extern t) (get m k))])
-                                                   (keys keys-realm-map)
-                                                   value-translators)
-                                              (into {})))
+                                          (into {} (map (fn [k t]
+                                                          [k ((translator/to-extern t) (get m k))])
+                                                        (keys keys-realm-map)
+                                                        value-translators)))
                                         (realm/map-with-keys (zipmap (keys keys-realm-map)
                                                                      (map translator/external-realm value-translators)))))))
 
@@ -122,6 +120,36 @@
                                                         v)))
                                         (apply realm/tuple (map translator/external-realm translators))))))
 
+(defn- optional [realm]
+  (recursive-1 realm
+               (fn [translator]
+                 (translator/translator (fn from-extern [v]
+                                          (if (nil? v)
+                                            v
+                                            ((translator/from-extern translator) v)))
+                                        (fn to-extern [v]
+                                          (if (nil? v)
+                                            v
+                                            ((translator/to-extern translator) v)))
+                                        (realm/optional (translator/external-realm translator))))))
+
+(defn- intersection [& realms]
+  (assert (not-empty realms))
+  ;; Note: because every value should conform to all intersected realms, every translation should be able to translate all values.
+  ;; So we can just take the first one. (can't be empty)
+  (recursive-1 realms
+               (fn [translators]
+                 (let [translator (first translators)
+                       ext-realm (apply realm/intersection (map translator/external-realm translators))]
+                   (translator/translator (fn from-extern [v]
+                                            (when-not (realm/contains? ext-realm v)
+                                              (throw (translator/format-error (str "Not in " (realm-inspection/description ext-realm))
+                                                                              v)))
+                                            ((translator/from-extern translator) v))
+                                          (fn to-extern [v]
+                                            ((translator/to-extern translator) v))
+                                          ext-realm)))))
+
 (defn identity
   "Returns an identity formatter for the given realm. The formatter
   throws if the external value is not contained in the realm."
@@ -144,6 +172,9 @@
         (realm-inspection/from-predicate? realm))
     (simple (id-translator realm))
 
+    (realm-inspection/optional? realm)
+    (optional (realm-inspection/optional-realm-realm realm))
+
     (realm-inspection/sequence-of? realm)
     (sequence-of (realm-inspection/sequence-of-realm-realm realm))
 
@@ -160,7 +191,10 @@
     (realm-inspection/tuple? realm)
     (apply tuple (realm-inspection/tuple-realm-realms realm))
 
-    ;; intersection? function?
+    (realm-inspection/intersection? realm)
+    (apply intersection (realm-inspection/intersection-realm-realms realm))
+
+    ;; function?
 
     :else nil))
 
