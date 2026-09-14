@@ -1,67 +1,40 @@
 (ns active.data.translate.core
   (:require [active.data.translate.format :as format]
-            [active.data.realm :as realm]
-            [active.data.realm.inspection :as realm-inspection]
-            [active.clojure.lens :as lens]))
+            [active.data.translate.translator :as translator]))
 
-(def ^:private meta-key ::translations)
+(def unsupported-exn? format/unsupported-exn?)
 
-(defn- set-realm-formatter [realm format formatter]
-  (realm/with-metadata realm meta-key
-    (let [m (get (realm-inspection/metadata realm) meta-key)]
-      (assoc m (format/format-id format) formatter))))
+(def format-error? translator/format-error?)
 
-(defn- get-realm-formatter [realm format]
-  (get (get (realm-inspection/metadata realm) meta-key) (format/format-id format)))
+(defn external-realm
+  "Returns the realm of the external values for the given internal realm, as defined by the given format.
+  May throw [[unsupported-exn?]].
+  "
+  [realm format]
+  (let [translator (format/get-translator format realm)]
+    (translator/external-realm translator)))
 
-(defn add-realm-formatter
-  "Returns a copy of the given realm, with a formatter to the given
-  target format attached."
-  [realm format formatter]
-  (set-realm-formatter (realm/compile realm) format formatter))
+(defn to-extern
+  "Returns a unary function that translates values from their internal to their external represenation, as defined by the given format.
+  May throw [[unsupported-exn?]]."
+  [realm format]
+  (let [translator (format/get-translator format realm)]
+    (translator/to-extern translator)))
 
-;; TODO: all the exception-handling is probably not very performant
-;; (or is it?); it should probably be optional to have better error
-;; message or better performance.
+(defn from-extern
+  "Returns a unary function that translates values from their external to their internal represenation, as defined by the given format.
+  May throw [[unsupported-exn?]].
+  The returned function may throw [[format-error?]]."
+  [realm format]
+  (let [translator (format/get-translator format realm)]
+    (translator/from-extern translator)))
 
-(defn- get-translator-0 [realm format]
-  (let [realm (realm/compile realm)
-        resolve-0 #(get-translator-0 % format)
-        ;; Note: when recurring with another realm, and that isn't
-        ;; supported, then prepend this one in the path.
-        resolve
-        (fn [other-realm]
-          (format/wrap-unsupported-path* realm
-                                         #(resolve-0 other-realm)))
-
-        translator
-        (or (when-let [formatter (or (get-realm-formatter realm format)
-                                     (format/get-default-formatter format realm))]
-              (formatter resolve))
-            ;; else:
-            (throw (format/unsupported-exn realm)))]
-    (format/wrap-format-error-path* realm translator)))
-
-(defn- get-translator! [realm format]
-  (format/wrap-unsupported-format*
-   format
-   #(format/wrap-format-error-message* (get-translator-0 realm format))))
-
-(defn translator-lens [from-realm to-format]
-  (get-translator! from-realm to-format))
-
-(defn translator-from
-  "Returns a function that translates values of the given realm into a
-  formatted value, according to the given `format`."
-  [from-realm to-format]
-  ;; realm value => formatted value
-  (let [t (translator-lens from-realm to-format)]
-    #(lens/shove nil t %)))
-
-(defn translator-to
-  "Returns a function that translates formatted values into values of the
-  given realm, according to the given `format`."
-  [to-realm from-format]
-  ;; formatted value => realm value
-  (let [t (translator-lens to-realm from-format)]
-    #(lens/yank % t)))
+(defn ^:no-doc translator-lens [realm format]
+  (let [translator (format/get-translator format realm)
+        to-extern (translator/to-extern translator)
+        from-extern (translator/from-extern translator)]
+    (fn
+      ([extern]
+       (from-extern extern))
+      ([_ intern]
+       (to-extern intern)))))

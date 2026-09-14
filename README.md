@@ -32,11 +32,10 @@ translations for strings and integers:
 (require '[active.data.translate.formatter :as formatter])
 
 (def my-edn-format
-  (format/format :my-edn-format
-                 {realm/string formatter/id
-                  realm/integer formatter/id
-                  user (formatter/record-map user {user-id :id
-                                                   user-name :name})}))
+  {realm/string (formatter/identity realm/string)
+   realm/integer (formatter/identity realm/interger)
+   user (formatter/record-map user {user-id :id
+                                    user-name :name})})
 ```
 
 Using the format, we can create functions that translate between the
@@ -45,8 +44,8 @@ two:
 ```clojure
 (require '[active.data.translate.core :as translate])
 
-(def edn-from-user (translate/translator-from user my-edn-format))
-(def edn-to-user (translate/translator-to user my-edn-format))
+(def edn-from-user (translate/to-extern user my-edn-format))
+(def edn-to-user (translate/from-extern user my-edn-format))
 
 (= {:id 1 :name "Alice"}
    (edn-from-user (user user-id 1 user-name "Alice")))
