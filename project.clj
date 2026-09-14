@@ -3,7 +3,7 @@
             :url "http://www.eclipse.org/legal/epl-v10.html"}
 
   :dependencies [[org.clojure/clojure "1.11.0"]
-                 [de.active-group/active-data "0.4.0-SNAPSHOT"]]
+                 [de.active-group/active-data "0.4.0"]]
 
   :plugins [[lein-codox "0.10.8"]]
 
