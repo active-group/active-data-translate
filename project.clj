@@ -1,4 +1,4 @@
-(defproject de.active-group/active-data-translate "0.2.0"
+(defproject de.active-group/active-data-translate "0.2.1"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
 
