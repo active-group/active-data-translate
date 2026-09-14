@@ -74,7 +74,7 @@
   (fn [realm]
     (let [t1 (get-translator f1 realm)
           t2 (get-translator f2 (translator/external-realm t1))]
-      (translator/concat t1 t2))))
+      (translator/concat-translators t1 t2))))
 
 (defn concat-formats
   "Concatenate the given formats, ie. translate a value through all of
