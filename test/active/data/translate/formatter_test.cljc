@@ -1,5 +1,6 @@
 (ns active.data.translate.formatter-test
   (:require [active.data.translate.formatter :as formatter]
+            [active.data.translate.format :as format]
             [active.data.translate.translator :as translator]
             [active.data.translate.core :as core]
             [active.data.realm :as realm]
@@ -154,3 +155,13 @@
                                      e))))
 
     (t/is (= :foo (from "foo")))))
+
+(t/deftest identity-test
+  (let [fmt (format/combine-formats {realm/integer (formatter/simple inc-lens)}
+                                    format/identity)
+
+        int-seq (realm/sequence-of realm/integer)
+        from (core/from-extern int-seq fmt)
+        to (core/to-extern int-seq fmt)]
+    (t/is (= [41] (to [42])))
+    (t/is (= [42] (from [41])))))

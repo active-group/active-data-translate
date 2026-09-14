@@ -6,7 +6,8 @@
   values, throwing [[format-error]] for invalid values, but should assume
   that internal values are valid, using [[active.data.realm.attach]] so add optional validation."
   (:require [active.data.record :as r #?@(:cljs [:include-macros true])]
-            [clojure.string :as string]))
+            [clojure.string :as string])
+  (:refer-clojure :rename {concat clj-concat}))
 
 (r/def-record Translator
   [from-extern
@@ -22,6 +23,14 @@
     (Translator from-extern lens
                 to-extern (fn [v] (lens nil v))
                 external-realm external-realm))
+
+(defn concat
+  "Concatenates the given translators into one. The translators are applied 'from
+  extern' right to left, and 'to extern' left to right."
+  [translator & translators]
+  (translator (apply comp (map from-extern (cons translator translators)))
+              (apply comp (map to-extern (reverse (cons translator translators))))
+              (external-realm (last (cons translator translators)))))
 
 (def ^{:dynamic true :private true} *error-location* nil)
 
@@ -58,8 +67,8 @@
 (defn add-error-path* [position f & args]
   (let [location *error-location*
         new-location (if (or (nil? location) (seq? location))
-                       (concat location [position])
-                       (concat [location] [position]))]
+                       (clj-concat location [position])
+                       (clj-concat [location] [position]))]
     (apply set-error-location* new-location
            f args)))
 

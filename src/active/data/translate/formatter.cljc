@@ -14,13 +14,13 @@
   [translator]
   (fn [_resolve] translator))
 
-#_(defn- recursive-1 [realm f & args]
-    (fn [resolve]
-      (apply f (resolve realm) args)))
+(defn- recursive-1 [realm f & args]
+  (fn [resolve]
+    (apply f (resolve realm) args)))
 
-#_(defn recursive-n [realms f & args]
-    (fn [resolve]
-      (apply f (mapv resolve realms) args)))
+(defn- recursive-n [realms f & args]
+  (fn [resolve]
+    (apply f (mapv resolve realms) args)))
 
 (defn ^:private id-translator [realm]
   (translator/translator (fn from-extern [v]
@@ -30,37 +30,139 @@
                          (fn to-extern [v] v) ;; TODO: realm-attach/fn?
                          realm))
 
+(defn- sequence-of [item-realm]
+  (recursive-1 item-realm
+               (fn [translator]
+                 (translator/translator (fn from-extern [v]
+                                          (when-not (sequential? v)
+                                            (throw (translator/format-error "Not a sequence" v)))
+                                          (into (empty v) (map-indexed (fn [idx v]
+                                                                         (translator/with-error-path idx
+                                                                           ((translator/from-extern translator) v)))
+                                                                       v)))
+                                        (fn to-extern [v]
+                                          (into (empty v) (map (translator/to-extern translator) v)))
+                                        (realm/sequence-of (translator/external-realm translator))))))
+
+(defn- map-of [key-realm value-realm]
+  (recursive-n [key-realm value-realm]
+               (fn [[key-translator value-translator]]
+                 (translator/translator (fn from-extern [m]
+                                          (when-not (map? m)
+                                            (throw (translator/format-error "Not a map" m)))
+                                          (-> (reduce-kv
+                                               (fn [r k v]
+                                                 (translator/with-error-path k
+                                                   (assoc! r
+                                                           ((translator/from-extern key-translator) k)
+                                                           ((translator/from-extern value-translator) v))))
+                                               (transient {})
+                                               m)
+                                              (persistent!)))
+                                        (fn to-extern [m]
+                                          (-> (reduce-kv
+                                               (fn [r k v]
+                                                 (assoc! r ((translator/to-extern key-translator) k)
+                                                         ((translator/to-extern value-translator) v)))
+                                               (transient {})
+                                               m)
+                                              (persistent!)))
+                                        (realm/map-of (translator/external-realm key-translator)
+                                                      (translator/external-realm value-translator))))))
+
+(defn- map-with-keys [keys-realm-map]
+  (recursive-n (vals keys-realm-map)
+               (fn [value-translators]
+                 (translator/translator (fn from-extern [m]
+                                          (when-not (map? m)
+                                            (throw (translator/format-error "Not a map" m)))
+                                          (-> (map (fn [k t]
+                                                     [k (translator/with-error-path k
+                                                          ((translator/from-extern t) (get m k)))])
+                                                   (keys keys-realm-map)
+                                                   value-translators)
+                                              (into {})))
+                                        (fn to-extern [m]
+                                          (-> (map (fn [k t]
+                                                     [k ((translator/to-extern t) (get m k))])
+                                                   (keys keys-realm-map)
+                                                   value-translators)
+                                              (into {})))
+                                        (realm/map-with-keys (zipmap (keys keys-realm-map)
+                                                                     (map translator/external-realm value-translators)))))))
+
+(defn- set-of [item-realm]
+  (recursive-1 item-realm
+               (fn [translator]
+                 (translator/translator (fn from-extern [v]
+                                          (when-not (set? v)
+                                            (throw (translator/format-error "Not a set" v)))
+                                          (into #{} (map-indexed (fn [idx v]
+                                                                   (translator/with-error-path idx
+                                                                     ((translator/from-extern translator) v)))
+                                                                 v)))
+                                        (fn to-extern [v]
+                                          (into #{} (map (translator/to-extern translator) v)))
+                                        (realm/set-of (translator/external-realm translator))))))
+
+(defn- tuple [& realms]
+  (recursive-n realms
+               (fn [translators]
+                 (translator/translator (fn from-extern [v]
+                                          (when-not (vector? v)
+                                            (throw (translator/format-error "Not a vector" v)))
+                                          (into [] (map-indexed (fn [idx [t v]]
+                                                                  (translator/with-error-path idx
+                                                                    ((translator/from-extern t) v)))
+                                                                (map clj-vector translators v))))
+                                        (fn to-extern [v]
+                                          (into [] (map (fn [t v]
+                                                          ((translator/to-extern t) v))
+                                                        translators
+                                                        v)))
+                                        (apply realm/tuple (map translator/external-realm translators))))))
+
 (defn identity
-  "Returns an identity formatter for the given realm, when no actual
-  translation is needed. The formatter throws if the external value is not
-  contained in the realm."
+  "Returns an identity formatter for the given realm. The formatter
+  throws if the external value is not contained in the realm."
   [realm]
-  (simple (id-translator realm)))
+  (cond
+    (or (realm-inspection/string? realm)
+        (realm-inspection/rational? realm)
+        (realm-inspection/number? realm)
+        (realm-inspection/char? realm)
+        (realm-inspection/keyword? realm)
+        (realm-inspection/symbol? realm)
+        (realm-inspection/boolean? realm)
+        (realm-inspection/uuid? realm)
 
-;; (def ^{:doc "Formatter that keeps strings as they are."} string (identity realm/string))
+        (realm-inspection/integer-from-to? realm)
+        (realm-inspection/real-range? realm)
 
-;; (def ^{:doc "Formatter that keeps chars as they are."} char (identity realm/char))
+        (realm-inspection/map-with-tag? realm)
+        (realm-inspection/enum? realm)
+        (realm-inspection/from-predicate? realm))
+    (simple (id-translator realm))
 
-;; (def ^{:doc "Formatter that keeps keywords as they are."} keyword (identity realm/keyword))
+    (realm-inspection/sequence-of? realm)
+    (sequence-of (realm-inspection/sequence-of-realm-realm realm))
 
-;; (def ^{:doc "Formatter that keeps symbols as they are."} symbol (identity realm/symbol))
+    (realm-inspection/map-of? realm)
+    (map-of (realm-inspection/map-of-realm-key-realm realm)
+            (realm-inspection/map-of-realm-value-realm realm))
 
-;; (def ^{:doc "Formatter that keeps booleans as they are."} boolean (identity realm/boolean))
+    (realm-inspection/map-with-keys? realm)
+    (map-with-keys (realm-inspection/map-with-keys-realm-map realm))
 
-;; TODO? integer(from to)
-;; TOOD? real(from to)
+    (realm-inspection/set-of? realm)
+    (set-of (realm-inspection/set-of-realm-realm realm))
 
-;; TODO? utils for intersection, sequence-of, set-of, map-of, map-with-tag, map-with-keys, tuples,
+    (realm-inspection/tuple? realm)
+    (apply tuple (realm-inspection/tuple-realm-realms realm))
 
-#_(defn vector [realm]
-    (recursive-1 realm (fn [translator]
-                         (translator/translator (fn from-extern [v]
-                                                  (when-not (vector? v)
-                                                    (throw (translator/format-error "Not a vector" v)))
-                                                  (mapv (translator/from-extern translator) v))
-                                                (fn to-extern [v]
-                                                  (mapv (translator/to-extern translator) v))
-                                                (realm/sequence-of (translator/external-realm translator))))))
+    ;; intersection? function?
+
+    :else nil))
 
 (defn record-map
   "Formatter to represent a record as a map with explicit keys.

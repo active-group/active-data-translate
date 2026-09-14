@@ -4,7 +4,9 @@
   This namespace contains utilities to create and use such functions."
 
   (:require [active.data.realm.inspection :as realm-inspection]
-            [active.data.realm :as realm])
+            [active.data.realm :as realm]
+            [active.data.translate.formatter :as formatter]
+            [active.data.translate.translator :as translator])
   (:refer-clojure :exclude [empty identity]))
 
 (defn- compile-formatters-map [formatters]
@@ -18,7 +20,13 @@
     ;; if it's a function, it has to consider the difference between records and record-realms (and other things) itself.
     formatters))
 
-(def ^{:doc "The empty format."} empty {})
+(def ^{:doc "The empty format that supports nothing."} empty {})
+
+(def ^{:doc "A format that keeps all values as they are.
+
+  Note that this still resolves any nested realms, so if you combine this with a format that for example translates integers, you get sequences of integers for free."} identity
+  (fn [realm]
+    (formatter/identity realm)))
 
 (defn combine-formats
   "Combines multiple formats into one. Earlier formatters for a realm take precedence over later ones."
@@ -61,4 +69,23 @@
                         (formatter resolve))
                     (throw (unsupported-exn realm))))]
     (resolve realm)))
+
+(defn- concat-formats-2 [f1 f2]
+  (fn [realm]
+    (let [t1 (get-translator f1 realm)
+          t2 (get-translator f2 (translator/external-realm t1))]
+      (translator/concat t1 t2))))
+
+(defn concat-formats
+  "Concatenate the given formats, ie. translate a value through all of
+   the given formats, left to right for 'to external', and right to left
+   for 'from external'."
+  [& formats]
+  (if (empty? formats)
+    empty
+    (if (empty? (rest formats))
+      (first formats)
+      (reduce concat-formats-2
+              (first formats)
+              (rest formats)))))
 
