@@ -150,6 +150,33 @@
                                             ((translator/to-extern translator) v))
                                           ext-realm)))))
 
+(defn- record-identity [realm]
+  (recursive-n (map realm-inspection/record-realm-field-realm (realm-inspection/record-realm-fields realm))
+               (fn [field-translators]
+                 (translator/translator (fn from-extern [v]
+                                          (apply (realm-inspection/record-realm-constructor realm)
+                                                 (map (fn [field ft]
+                                                        ((translator/to-extern ft) (field v)))
+                                                      (realm-inspection/record-realm-fields realm)
+                                                      field-translators)))
+                                        (fn to-extern [v]
+                                          ;; Note: if validations are on, and if there is any "actual" translation of field realms, then this'll likely fail.
+                                          (apply (realm-inspection/record-realm-constructor realm)
+                                                 (map (fn [field ft]
+                                                        ((translator/from-extern ft) (field v)))
+                                                      (realm-inspection/record-realm-fields realm)
+                                                      field-translators)))
+                                        (realm/record (realm-inspection/record-realm-name realm)
+                                                      (realm-inspection/record-realm-constructor realm)
+                                                      (realm-inspection/predicate realm)
+                                                      (map (fn [field ft]
+                                                             (realm/field (realm-inspection/record-realm-field-name field)
+                                                                          (translator/external-realm ft)
+                                                                          (realm-inspection/record-realm-field-getter field)))
+
+                                                           (realm-inspection/record-realm-fields realm)
+                                                           field-translators))))))
+
 (defn identity
   "Returns an identity formatter for the given realm. The formatter
   throws if the external value is not contained in the realm."
@@ -163,6 +190,7 @@
         (realm-inspection/symbol? realm)
         (realm-inspection/boolean? realm)
         (realm-inspection/uuid? realm)
+        (realm-inspection/any? realm)
 
         (realm-inspection/integer-from-to? realm)
         (realm-inspection/real-range? realm)
@@ -193,6 +221,9 @@
 
     (realm-inspection/intersection? realm)
     (apply intersection (realm-inspection/intersection-realm-realms realm))
+
+    (realm-inspection/record? realm)
+    (record-identity realm)
 
     ;; function?
 

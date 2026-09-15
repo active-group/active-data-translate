@@ -24,7 +24,10 @@
 
 (def ^{:doc "A format that keeps all values as they are.
 
-  Note that this still resolves any nested realms, so if you combine this with a format that for example translates integers, you get sequences of integers for free."} identity
+  Note that this still resolves any nested realms, so if you combine
+  this with a format that for example translates integers, you get
+  sequences of integers for free."}
+  identity
   (fn [realm]
     (formatter/identity realm)))
 
